@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyfd"
+authors = [
+    {name = "Gabriel Laberge", email = "gabriel.laberge@polymtl.ca"},
+]
+description = "Functional Decompositions of Black-Boxes"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+  'numpy',
+  'matplotlib',
+  'scikit-learn',
+  'pandas',
+  'tqdm>=4.27.0',
+  'shap',
+  'xgboost'
+]
+dynamic = ["version"]
+
+
+[tool.setuptools]
+packages = ["pyfd"]
+
+[tool.setuptools.dynamic]
+version = {attr = "pyfd.__version__"}

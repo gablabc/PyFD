@@ -1,0 +1,9 @@
+*.pdf
+*.csv
+*.pyc
+*.joblib
+*.txt
+*.json
+pyfd.egg-info/
+*.so
+*.o
