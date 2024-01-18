@@ -417,7 +417,7 @@ class CoE_Tree(FDTree):
 
         # No split possible
         if len(splits) == 0:
-            return [], [], [], [], []
+            return [], [], []
         
         # Otherwise we optimize the objective
 
@@ -470,7 +470,7 @@ class PDP_PFI_Tree(FDTree):
 
         # No split possible
         if len(splits) == 0:
-            return [], [], [], [], []
+            return [], [], []
         
         # Otherwise we optimize the objective
         loa_left = np.zeros(len(splits))
@@ -527,7 +527,7 @@ class PDP_SHAP_Tree(FDTree):
 
         # No split possible
         if len(splits) == 0:
-            return [], [], [], [], []
+            return [], [], []
         
         # Otherwise we optimize the objective
         loa_left = np.zeros(len(splits))
