@@ -207,83 +207,102 @@ def partial_dependence_plot(decomposition, foreground, background, features, Ima
     d = len(additive_keys)
 
     if anchored:
-        y_min = min([np.percentile(h, 15) for h in decomposition.values()])
-        y_max = max([np.percentile(h, 85) for h in decomposition.values()])
+        y_min = min([np.percentile(decomposition[key], 5) for key in additive_keys])
+        y_max = max([np.percentile(decomposition[key], 95) for key in additive_keys])
+        importance = np.array([np.mean(decomposition[key].mean(0)**2) for key in additive_keys])
     else:
-        y_min = min([h.min() for h in decomposition.values()])
-        y_max = max([h.max() for h in decomposition.values()])
+        y_min = min([decomposition[key].min() for key in additive_keys])
+        y_max = max([decomposition[key].max() for key in additive_keys])
+        importance = np.array([np.var(decomposition[key]) for key in additive_keys])
+    order = np.argsort(-importance)
+
     delta_y = (y_max-y_min)
     y_min = y_min - delta_y*0.01
     y_max = y_max + delta_y*0.01
 
     n_rows = ceil(d / n_cols)
     _, ax = plt.subplots(n_rows, n_cols, figsize=figsize)
-    for i, key in enumerate(additive_keys):
-        curr_ax = ax[i//n_cols][i%n_cols]
-        x_min = foreground[:, Imap_inv[i]].min()
-        x_max = foreground[:, Imap_inv[i]].max()
-        # delta_x = (x_max-x_min)
-        # x_min = x_min - delta_x*0.05
-        # x_max = x_max + delta_x*0.05
+    for iter, idx in enumerate(order):
+        curr_ax = ax[iter//n_cols][iter%n_cols]
+
+        # Key represents the name of the component
+        key = additive_keys[idx]
+        # To which column of X it corresponds
+        column = Imap_inv[idx]
+        x_min = foreground[:, column].min()
+        x_max = foreground[:, column].max()
 
         if plot_hist:
-            _, _, rects = curr_ax.hist(foreground[:, Imap_inv[i]], bins=20, rwidth=0.95, color="gray", alpha=0.6, bottom=y_min)
+            _, _, rects = curr_ax.hist(foreground[:, column], bins=20, rwidth=0.95, color="gray", alpha=0.6, bottom=y_min)
             max_height = max([h.get_height() for h in rects])
             target_max_height = 0.5 * delta_y
             for r in rects:
                 r.set_height(target_max_height*r.get_height()/max_height)
         
         if not anchored:
-            sorted_idx = np.argsort(foreground[:, Imap_inv[i]])
-            curr_ax.plot(foreground[sorted_idx, Imap_inv[i]], decomposition[key][sorted_idx], 'k-')
+            sorted_idx = np.argsort(foreground[:, column])
+            curr_ax.plot(foreground[sorted_idx, column], decomposition[key][sorted_idx], 'k-')
         else:
+            plot_legend = False
             if grouping is None:
                 n_groups = 1
                 groups = np.zeros(foreground.shape[1])
-            else:
+            elif isinstance(grouping, np.ndarray):
+                if grouping is None:
+                    n_groups = 1
+                    groups = np.zeros(foreground.shape[1])
+            elif grouping in ["gadget-pdp", "pdp-pfi"]:
+                plot_legend = True
                 assert id(foreground) ==  id(background) ,"grouping requires background=foreground"
+                # Fit a FDTree to reduce interactions involving the feature `column`
                 decomp_copy = {}
                 decomp_copy[()] = decomposition[()]
                 decomp_copy[(1,)] = decomposition[key]
-                background_slice = np.delete(background, Imap_inv[i], axis=1)
-                features_slice = features.remove([Imap_inv[i]])
+                background_slice = np.delete(background, column, axis=1)
+                features_slice = features.remove([column])
                 fd_tree = GADGET_PDP(features=features_slice, **fd_trees_kwargs) if grouping == "gadget-pdp" \
                             else  PDP_PFI_Tree(features=features_slice, **fd_trees_kwargs) 
                 fd_tree.fit(background_slice, decomp_copy)
                 groups, rules = fd_tree.predict(background_slice, latex_rules=True)
                 n_groups = fd_tree.n_groups
+            else:
+                raise Exception("Invalid grouping parameter")
 
+            # For each group plot the anchored components in color
             for group_id in range(n_groups):
                 group_foreground = foreground[groups==group_id]
-                sorted_idx = np.argsort(group_foreground[:, Imap_inv[i]])
+                sorted_idx = np.argsort(group_foreground[:, column])
                 select = np.where(groups==group_id)[0][sorted_idx].reshape((-1, 1))
-                group_ice = decomposition[key][select, select.T]
+                H = decomposition[key][select, select.T]
                 # group_ice += mu[groups==group_id].mean()
-                curr_ax.plot(group_foreground[sorted_idx, Imap_inv[i]], group_ice, COLORS[group_id], alpha=0.01)
-                curr_ax.plot(group_foreground[sorted_idx, Imap_inv[i]], group_ice.mean(1), COLORS[group_id], label=rules[group_id])
+                curr_ax.plot(group_foreground[sorted_idx, column], H, COLORS[group_id], alpha=0.01)
+                curr_ax.plot(group_foreground[sorted_idx, column], H.mean(1), COLORS[group_id], label=rules[group_id])
         
-            if groups is not None:
+            if plot_legend:
                 curr_ax.legend(fontsize=12, framealpha=1)
         
-        # xticks labels depend on the type of feature
-        if features.types[Imap_inv[i]] in ["bool", "ordinal"]:
-            if features.types[i] == "ordinal":
-                categories = features.maps_[i].cats
+        # xticks labels for categorical data
+        if features.types[column] in ["bool", "ordinal", "nominal"]:
+            if features.types[column] in ["ordinal", "nominal"]:
+                categories = features.maps_[column].cats
                 # Truncate names if too long
-                if len(categories) > 5:
-                    categories = [name[0] for name in categories]
+                # if len(categories) > 5:
+                categories = [name[:6] for name in categories]
+                rotation = 45
             else:
                 categories = [False, True]
-            curr_ax.set_xticks(np.arange(len(categories)), labels=categories)
-                
+                rotation = 0
+            curr_ax.set_xticks(np.arange(len(categories)), labels=categories, rotation=rotation)
+        
+        # Set ticks and labels
         curr_ax.grid('on')
-        curr_ax.set_xlabel(features.names_[Imap_inv[i]])
-        if i%n_cols == 0:
+        curr_ax.set_xlabel(features.names_[column])
+        if iter%n_cols == 0:
             curr_ax.set_ylabel("Local Feature Attribution")
         curr_ax.set_xlim(x_min, x_max)
         if normalize_y:
             curr_ax.set_ylim(y_min, y_max)
-            if not i%n_cols == 0:
+            if not iter%n_cols == 0:
                 curr_ax.yaxis.set_ticklabels([])
 
 
