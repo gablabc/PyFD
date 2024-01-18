@@ -1,9 +1,15 @@
 import numpy as np
+import pandas as pd
 from copy import deepcopy
 from itertools import chain, combinations
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, KBinsDiscretizer, FunctionTransformer
 from sklearn.preprocessing import OneHotEncoder, SplineTransformer, QuantileTransformer
+from sklearn.pipeline import Pipeline
+
+from shap.maskers import Independent
+from shap.explainers import Tree
+
 
 ADDITIVE_TRANSFORMS = [StandardScaler, MinMaxScaler, QuantileTransformer,
                        FunctionTransformer, KBinsDiscretizer, SplineTransformer, OneHotEncoder]
@@ -109,6 +115,41 @@ def get_Imap_inv_from_pipeline(Imap_inv, pipeline):
             Imap_inv_copy = deepcopy(Imap_inv_return)
     
     return Imap_inv_return
+
+
+
+def setup_treeshap(Imap_inv, foreground, background, model):
+
+    # Map Imap_inv through the pipeline
+    if type(model) == Pipeline:
+        preprocessing = model[:-1]
+        model = model[-1]
+        background = preprocessing.transform(background)
+        foreground = preprocessing.transform(foreground)
+        Imap_inv = get_Imap_inv_from_pipeline(Imap_inv, preprocessing)
+
+    # Extract tree structure with the SHAP API
+    masker = Independent(data=background, max_samples=background.shape[0])
+    ensemble = Tree(model, data=masker).model
+    
+    # All numpy arrays must be C_CONTIGUOUS
+    assert ensemble.thresholds.flags['C_CONTIGUOUS']
+    assert ensemble.features.flags['C_CONTIGUOUS']
+    assert ensemble.children_left.flags['C_CONTIGUOUS']
+    assert ensemble.children_right.flags['C_CONTIGUOUS']
+    assert ensemble.node_sample_weight.flags['C_CONTIGUOUS']
+    
+    # All arrays must be C-Contiguous and DataFrames are not.
+    if type(foreground) == pd.DataFrame or not foreground.flags['C_CONTIGUOUS']:
+        foreground = np.ascontiguousarray(foreground)
+    if type(background) == pd.DataFrame or not background.flags['C_CONTIGUOUS']:
+        background = np.ascontiguousarray(background)
+    
+    Imap = np.zeros(background.shape[1], dtype=np.int32)
+    for i, group in enumerate(Imap_inv):
+        for column in group:
+            Imap[column] = i
+    return Imap, foreground, background, model, ensemble
 
 
 

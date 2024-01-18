@@ -113,7 +113,7 @@ class FDTree(BaseEstimator, ABC):
         if self.features.types[i] == "num":
             x_i_unique = np.unique(x_i)
             if len(x_i_unique) < 40:
-                splits = np.sort(x_i_unique)[::-1]
+                splits = np.sort(x_i_unique)[:-1:]
             else:
                 splits = np.quantile(x_i, np.arange(1, 40) / 40)
                 # It is possible that quantiles equal the last element when there are
@@ -252,11 +252,14 @@ class FDTree(BaseEstimator, ABC):
         """ Return the group index and the corresponding rules """
         groups = np.zeros(X_new.shape[0], dtype=np.int)
         self.group_idx = 0
-        rules = {}
-        curr_rule = []
-        self._tree_traversal(self.root, np.arange(X_new.shape[0]), X_new, groups, 
-                             rules, curr_rule, latex_rules)
-        return groups, rules
+        if self.n_groups == 1:
+            return groups, ["all"]
+        else:
+            rules = {}
+            curr_rule = []
+            self._tree_traversal(self.root, np.arange(X_new.shape[0]), X_new, groups, 
+                                rules, curr_rule, latex_rules)
+            return groups, rules
 
 
     def postprocess_rules(self, curr_rule, latex_rules):
@@ -344,7 +347,7 @@ class FDTree(BaseEstimator, ABC):
                 curr_rule.append(f"not {feature_name}")
             # Ordinal
             elif feature_type == "ordinal":
-                categories = np.array(self.features.maps[node.feature].cats)
+                categories = np.array(self.features.maps_[node.feature].cats)
                 cats_left = categories[:int(node.threshold)+1]
                 if len(cats_left) == 1:
                     curr_rule.append(f"{feature_name}={cats_left[0]}")
@@ -493,14 +496,20 @@ class PDP_SHAP_Tree(FDTree):
         super().__init__(*args, **kwargs)
 
 
-    def fit(self, X, h, H, Phi):
+    def fit(self, X, decomposition, Phi):
         self.X = X
         self.N, self.D = X.shape
-        # Model evaluations are the diagonal
-        self.h = h
-        assert self.h.shape == (self.N,)
-        assert H.shape[:2] == (self.N, self.N)
-        assert Phi.shape[:2] == (self.N, self.N)
+        self.h = decomposition[()]
+        # Construct the H tensor
+        keys = decomposition.keys()
+        additive_keys = [key for key in keys if len(key)==1]
+        assert np.shape(decomposition[additive_keys[0]]) == (self.N, self.N), "Anchored decompositions must be provided"
+        H = np.zeros((self.N, self.N, len(additive_keys)))
+        # Additive terms
+        for i, key in enumerate(additive_keys):
+            H[..., i] = decomposition[key]
+        # Compare with Phi tensor
+        assert H.shape == Phi.shape
         self.Delta = Phi - H
         
         self.loa_factor = 1 / self.h.var() # To have an loa 0-100%
@@ -572,7 +581,7 @@ class GADGET_PDP(FDTree):
 
         # No split possible
         if len(splits) == 0:
-            return [], [], [], [], []
+            return [], [], []
         
         # Otherwise we optimize the objective
         loa_left = np.zeros(len(splits))

@@ -1,14 +1,11 @@
+""" Module for computing functional decompositions """
 
 import ctypes
 import glob
-import pandas as pd
 import numpy as np
-from functools import partial
 from tqdm import tqdm
 import os
-from itertools import chain, combinations
-from shap.maskers import Independent
-from shap.explainers import Tree
+from itertools import combinations
 from graphviz import Digraph
 from copy import deepcopy
 
@@ -16,7 +13,7 @@ from sklearn.linear_model import LinearRegression, Ridge, LogisticRegression, Po
 from sklearn.pipeline import Pipeline
 
 from .plots import color_dict
-from .utils import check_Imap_inv, get_Imap_inv_from_pipeline, get_leaf_box, ravel, powerset
+from .utils import check_Imap_inv, get_Imap_inv_from_pipeline, get_leaf_box, ravel, powerset, setup_treeshap
 
 
 
@@ -81,7 +78,7 @@ def get_components_linear(h, foreground, background, Imap_inv=None):
 #######################################################################################
 
 
-def setup(foreground, background, Imap_inv, interactions, show_bar):
+def setup_brute_force(foreground, background, Imap_inv, interactions, show_bar):
     d = background.shape[1]
     if type(interactions) == int:
         assert interactions >= 1, "interactions must be 1, 2, 3, ..."
@@ -151,7 +148,7 @@ def get_components_brute_force(h, foreground, background, Imap_inv=None, interac
     """
     
     # Setup
-    foreground, Imap_inv, iterator_, one_group = setup(foreground, background, Imap_inv, interactions, show_bar)
+    foreground, Imap_inv, iterator_, one_group = setup_brute_force(foreground, background, Imap_inv, interactions, show_bar)
     N_ref = background.shape[0]
     N_eval = foreground.shape[0]
 
@@ -293,153 +290,157 @@ def get_components_adaptive(h, background, Imap_inv=None, show_bar=True, toleran
 
 
 
-def permutation_shap(h, foreground, background, Imap_inv=None, M=20, show_bar=True, reversed=True, return_nu_evals=False):
-    """
-    Approximate the Shapley Values of any black box by sampling M permutations
+#######################################################################################
+#                                    Tree Ensembles
+#######################################################################################    
+
+
+
+def get_component_tree(model, foreground, background, Imap_inv=None, anchored=False, algorithm='recurse'):
+    """ 
+    Compute the Functional Components of h by via the recursive Tree algorithm
 
     Parameters
     ----------
-    h : model X -> R
-    foreground : (Nf, d) `np.array`
-        The data points at which to evaluate the decomposition
-    background : (Nb, d) `np.array`
-        The data points at which to anchor the decomposition
+    model : model_object
+        The tree based machine learning model that we want to explain. XGBoost, LightGBM, CatBoost,
+        and most tree-based scikit-learn models are supported.
+    foreground : numpy.array or pandas.DataFrame
+        The foreground dataset is the set of all points whose prediction we wish to explain.
+    background : numpy.array or pandas.DataFrame
+        The background dataset to use for integrating out missing features in the coallitional game.
     Imap_inv : List(List(int))
         A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
         the columns 1 and 2 as a single feature.
-    
+
     Returns
     -------
-    shapley_values : (Nf, n_features) `np.array`
+    results : numpy.array
+        A (N_foreground, n_features) array if `anchored=False`, otherwise a (N_foreground, N_background, n_features)
+        array of additive components.
     """
 
-    # Setup Imap_inv
+    sym = id(foreground) == id(background)
+    if anchored and algorithm in ['leaf', 'waterfall']:
+        raise Exception("Anchored decompositions are only supported by the `recurse` algorithm")
+    
+    # Setup
     Imap_inv, D, is_full_partition = check_Imap_inv(Imap_inv, background.shape[1])
-    assert is_full_partition, "PermutationSHAP requires Imap_inv to be a partition of the input columns"
-    N_eval = foreground.shape[0]
-    if reversed:
-        def permutation_generator(M, D):
-            assert M%2==0, "Reversed Permutations require an even M"
-            for _ in range(M//2):
-                perm = np.random.permutation(D)
-                yield perm
-                yield perm[-1::-1]
+    # We complete the partition with a `fake` feature if necessary
+    if not is_full_partition:
+        Imap_inv = deepcopy(Imap_inv)
+        Imap_inv.append([])
+        Imap_inv_ravel = ravel(Imap_inv)
+        for k in range(foreground.shape[1]):
+            if not k in Imap_inv_ravel:
+                Imap_inv[-1].append(k)
+    Imap, foreground, background, model, ensemble = setup_treeshap(Imap_inv, foreground, background, model)
+    
+    # Shapes
+    d = foreground.shape[1]
+    n_features = np.max(Imap) + 1
+    depth = ensemble.features.shape[1]
+    Nx = foreground.shape[0]
+    Nz = background.shape[0]
+    Nt = ensemble.features.shape[0]
+
+    # Values at each leaf
+    values = np.ascontiguousarray(ensemble.values[..., -1])
+
+    # 0-th component
+    decomp = {}
+    preds = ensemble.predict(background) if ensemble.num_outputs == 1 else ensemble.predict(background)[..., -1]
+    if anchored:
+        decomp[()] = preds
     else:
-        def permutation_generator(M, D):
-            for _ in range(M):
-                perm = np.random.permutation(D)
-                yield perm
+        decomp[()] = preds.mean()
+
+    # Where to store the output
+    results = np.zeros((Nx, Nz, n_features)) if anchored else np.zeros((Nx, n_features)) 
+
+    ####### Wrap C / Python #######
+
+    # Find the shared library, the path depends on the platform and Python version    
+    project_root = os.path.dirname(__file__).split('pyfd')[0]
+    libfile = glob.glob(os.path.join(project_root, 'treeshap*.so'))[0]
+
+    # Open the shared library
+    mylib = ctypes.CDLL(libfile)
+
+    if algorithm == "recurse":
+        # Tell Python the argument and result types of function main_treeshap
+        mylib.main_add_treeshap.restype = ctypes.c_int
+        mylib.main_add_treeshap.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, 
+                                            ctypes.c_int, ctypes.c_int,
+                                            np.ctypeslib.ndpointer(dtype=np.float64),
+                                            np.ctypeslib.ndpointer(dtype=np.float64),
+                                            np.ctypeslib.ndpointer(dtype=np.int32),
+                                            np.ctypeslib.ndpointer(dtype=np.float64),
+                                            np.ctypeslib.ndpointer(dtype=np.float64),
+                                            np.ctypeslib.ndpointer(dtype=np.int32),
+                                            np.ctypeslib.ndpointer(dtype=np.int32),
+                                            np.ctypeslib.ndpointer(dtype=np.int32),
+                                            ctypes.c_int, ctypes.c_int,
+                                            np.ctypeslib.ndpointer(dtype=np.float64)]
+
+        # 3. call function mysum
+        mylib.main_add_treeshap(Nx, Nz, Nt, d, depth, foreground, background, 
+                                Imap, ensemble.thresholds, values,
+                                ensemble.features, ensemble.children_left,
+                                ensemble.children_right, anchored, sym, results)
+    elif algorithm == "leaf":
+        # Get the boundary boxes of all the leaves
+        M, box_min, box_max = get_leaf_box(d, Nt, ensemble.features, ensemble.thresholds, 
+                                        ensemble.children_left, ensemble.children_right)
+
+        # Tell Python the argument and result types of function main_treeshap
+        mylib.main_add_leafshap.restype = ctypes.c_int
+        mylib.main_add_leafshap.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, 
+                                            ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                            np.ctypeslib.ndpointer(dtype=np.float64),
+                                            np.ctypeslib.ndpointer(dtype=np.float64),
+                                            np.ctypeslib.ndpointer(dtype=np.int32),
+                                            np.ctypeslib.ndpointer(dtype=np.float64),
+                                            np.ctypeslib.ndpointer(dtype=np.int32),
+                                            np.ctypeslib.ndpointer(dtype=np.int32),
+                                            np.ctypeslib.ndpointer(dtype=np.int32),
+                                            np.ctypeslib.ndpointer(dtype=np.float64),
+                                            np.ctypeslib.ndpointer(dtype=np.float64),
+                                            np.ctypeslib.ndpointer(dtype=np.float64)]
+
+        # 3. call function mysum
+        mylib.main_add_leafshap(Nx, Nz, Nt, d, depth, M, foreground, background, Imap,
+                                values, ensemble.features, ensemble.children_left, 
+                                ensemble.children_right, box_min, box_max, 
+                                results)
+    elif algorithm == "waterfall":
+        max_depth = ensemble.max_depth
+        # Tell Python the argument and result types of function main_treeshap
+        mylib.main_add_waterfallshap.restype = ctypes.c_int
+        mylib.main_add_waterfallshap.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                                ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                                np.ctypeslib.ndpointer(dtype=np.float64),
+                                                np.ctypeslib.ndpointer(dtype=np.float64),
+                                                np.ctypeslib.ndpointer(dtype=np.int32),
+                                                np.ctypeslib.ndpointer(dtype=np.float64),
+                                                np.ctypeslib.ndpointer(dtype=np.float64),
+                                                np.ctypeslib.ndpointer(dtype=np.int32),
+                                                np.ctypeslib.ndpointer(dtype=np.int32),
+                                                np.ctypeslib.ndpointer(dtype=np.int32),
+                                                np.ctypeslib.ndpointer(dtype=np.float64),
+                                                np.ctypeslib.ndpointer(dtype=np.float64)]
+
+        # 3. call function mysum
+        mylib.main_add_waterfallshap(Nx, Nz, Nt, d, depth, max_depth, foreground, background, Imap,
+                                ensemble.thresholds, values, ensemble.features, ensemble.children_left, 
+                                ensemble.children_right, ensemble.node_sample_weight, results)
+    else:
+        raise Exception("Invalid algorithm, pick from `recurse` `leaf` or `waterfall`")
     
-    # Compute the W matrix for SHAP value computations
-    all_sets = dict({() : np.zeros(D)})
-    # Go though all permutations to store all required sets
-    for perm in permutation_generator(M, D):
-        curr_set = []
-        prev_tuple = None
+    for i in range(D):
+        decomp[(i,)] = results[..., i]
+    return decomp
 
-        # Add the effect of the null coallition
-        all_sets[()][perm[0]] -= 1
-        
-        # Going along the permutation
-        for i in perm:
-            curr_set.append(i)
-            curr_set.sort()
-            curr_tuple = tuple(curr_set)
-            # Check if this curr_tuple has previously been used as key
-            if curr_tuple not in all_sets:
-                all_sets[curr_tuple] = np.zeros(D)
-            all_sets[curr_tuple][i] += 1
-            if prev_tuple is not None:
-                all_sets[prev_tuple][i] -= 1
-            # Keep track of the previous tuple
-            prev_tuple = curr_tuple
-    # All sets S on which we will evaluate nu(S)
-    W = np.column_stack(list(all_sets.values())) / M
-    interactions = list(all_sets.keys())
-    S = len(interactions)
-
-    # Setup arrays
-    nu = np.zeros((S, N_eval))
-    data_temp = np.copy(background)
-    # Compute the weight matrix by visiting the lattice space
-    for i, key in tqdm(enumerate(interactions), desc="Shapley Values", disable=not show_bar):
-        cardinality = len(key)
-        if cardinality == 0:
-            nu[i] += h(background).mean()
-        else:
-            idx = ravel([Imap_inv[j] for j in key])
-            for n in range(N_eval):
-                data_temp[:, idx] = foreground[n, idx]
-                nu[i][n] +=  h(data_temp).mean()
-            # Reset the copied background
-            data_temp[:,  idx] = background[:,  idx]
-
-    if return_nu_evals:
-        return W.dot(nu).T, S
-    return W.dot(nu).T
-
-
-
-def lattice_shap(h, foreground, background, interactions, Imap_inv=None, show_bar=True, return_nu_evals=False):
-    """
-    Approximate the Shapley Values of any black box given a subsample of the lattice-space
-
-    Parameters
-    ----------
-    h : model X -> R
-    foreground : (Nf, d) `np.array`
-        The data points at which to evaluate the decomposition
-    background : (Nb, d) `np.array`
-        The data points at which to anchor the decomposition
-    interactions : List(Tuple(int))
-        List of tuples representing the lattice space.
-    Imap_inv : List(List(int))
-        A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
-        the columns 1 and 2 as a single feature.
-    
-    Returns
-    -------
-    shapley_values : (Nf, n_features) `np.array`
-    """
-    
-    assert type(interactions) == list, "interactions must be a list of tuples"
-    assert () in interactions
-    S = len(interactions)
-
-    # Setup Imap_inv
-    Imap_inv, D, is_full_partition = check_Imap_inv(Imap_inv, background.shape[1])
-    assert is_full_partition, "LatticeSHAP requires Imap_inv to be a partition of the input columns"
-    N_eval = foreground.shape[0]
-    interactions_to_index = {interactions[i]:i for i in range(S)}
-
-    # Setup arrays
-    W = np.zeros((D, S))
-    nu = np.zeros((S, N_eval))
-    data_temp = np.copy(background)
-    # Compute the weight matrix by visiting the lattice space
-    for i, key in tqdm(enumerate(interactions), desc="Shapley Values", disable=not show_bar):
-        cardinality = len(key)
-        if cardinality == 0:
-            nu[i] += h(background).mean()
-        else:
-            idx = ravel([Imap_inv[j] for j in key])
-            for n in range(N_eval):
-                data_temp[:, idx] = foreground[n, idx]
-                nu[i][n] +=  h(data_temp).mean()
-            # Reset the copied background
-            data_temp[:,  idx] = background[:,  idx]
-        if cardinality == 0:
-            continue
-        
-        # Update the weight array
-        W[key, i] += 1 / cardinality
-        for subset in powerset(key):
-            weight = (-1)**(cardinality - len(subset)) / cardinality
-            W[key, interactions_to_index[subset]] += weight
-    
-    if return_nu_evals:
-        return W.dot(nu).T, S
-    return W.dot(nu).T
 
 
 
@@ -468,6 +469,7 @@ def get_H_interaction(decomposition):
         I_H[d]  = np.mean((decomposition[additive_keys[d]].mean(0) + \
                             decomposition[additive_keys[d]].mean(1))**2)
     return I_H, additive_keys
+
 
 
 def get_h_add(decomposition, anchored=True):
@@ -549,388 +551,3 @@ def decomposition_graph(decomposition, feature_names):
     
     
     return dot
-
-
-#######################################################################################
-#                                    Tree Ensembles
-#######################################################################################    
-
-
-def setup_treeshap(Imap_inv, foreground, background, model):
-    # Setup Imap_inv
-    Imap_inv, _, is_full_partition = check_Imap_inv(Imap_inv, background.shape[1])
-    assert is_full_partition, "TreeSHAP requires Imap_inv to be a partition of the input columns"
-
-    # Map Imap_inv through the pipeline
-    if type(model) == Pipeline:
-        preprocessing = model[:-1]
-        model = model[-1]
-        background = preprocessing.transform(background)
-        foreground = preprocessing.transform(foreground)
-        Imap_inv = get_Imap_inv_from_pipeline(Imap_inv, preprocessing)
-
-    # Extract tree structure with the SHAP API
-    masker = Independent(data=background, max_samples=background.shape[0])
-    ensemble = Tree(model, data=masker).model
-    
-    # All numpy arrays must be C_CONTIGUOUS
-    assert ensemble.thresholds.flags['C_CONTIGUOUS']
-    assert ensemble.features.flags['C_CONTIGUOUS']
-    assert ensemble.children_left.flags['C_CONTIGUOUS']
-    assert ensemble.children_right.flags['C_CONTIGUOUS']
-    assert ensemble.node_sample_weight.flags['C_CONTIGUOUS']
-    
-    # All arrays must be C-Contiguous and DataFrames are not.
-    if type(foreground) == pd.DataFrame or not foreground.flags['C_CONTIGUOUS']:
-        foreground = np.ascontiguousarray(foreground)
-    if type(background) == pd.DataFrame or not background.flags['C_CONTIGUOUS']:
-        background = np.ascontiguousarray(background)
-    
-    # Get Imap of the input features of the ensemble
-    Imap = np.zeros(background.shape[1], dtype=np.int32)
-    for i, group in enumerate(Imap_inv):
-        for column in group:
-            Imap[column] = i
-    return Imap, foreground, background, model, ensemble
-
-
-
-def interventional_treeshap(model, foreground, background, Imap_inv=None, anchored=False):
-    """ 
-    Compute the Interventional Shapley Values with the TreeSHAP algorithm
-
-    Parameters
-    ----------
-    model : model_object
-        The tree based machine learning model that we want to explain. XGBoost, LightGBM, CatBoost,
-        and most tree-based scikit-learn models are supported.
-    foreground : numpy.array or pandas.DataFrame
-        The foreground dataset is the set of all points whose prediction we wish to explain.
-    background : numpy.array or pandas.DataFrame
-        The background dataset to use for integrating out missing features in the coallitional game.
-    Imap_inv : List(List(int))
-        A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
-        the columns 1 and 2 as a single feature.
-
-    Returns
-    -------
-    results : numpy.array
-        A (N_foreground, n_features) array if `anchored=False`, otherwise a (N_foreground, N_background, n_features)
-        array of anchored SHAP values.
-    """
-
-    sym = id(foreground) == id(background)
-
-    # Setup
-    Imap, foreground, background, model, ensemble = setup_treeshap(Imap_inv, foreground, background, model)
-    
-    # Shapes
-    Nt = ensemble.features.shape[0]
-    n_features = np.max(Imap) + 1
-    depth = ensemble.features.shape[1]
-    Nx = foreground.shape[0]
-    Nz = background.shape[0]
-
-    # Values at each leaf
-    values = np.ascontiguousarray(ensemble.values[..., -1])
-
-    # Where to store the output
-    results = np.zeros((Nx, Nz, n_features)) if anchored else np.zeros((Nx, n_features)) 
-
-    ####### Wrap C / Python #######
-
-    # Find the shared library, the path depends on the platform and Python version    
-    project_root = os.path.dirname(__file__).split('pyfd')[0]
-    libfile = glob.glob(os.path.join(project_root, 'treeshap*.so'))[0]
-
-    # Open the shared library
-    mylib = ctypes.CDLL(libfile)
-
-    # Tell Python the argument and result types of function main_treeshap
-    mylib.main_int_treeshap.restype = ctypes.c_int
-    mylib.main_int_treeshap.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, 
-                                        ctypes.c_int, ctypes.c_int,
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.int32),
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.int32),
-                                        np.ctypeslib.ndpointer(dtype=np.int32),
-                                        np.ctypeslib.ndpointer(dtype=np.int32),
-                                        ctypes.c_int, ctypes.c_int,
-                                        np.ctypeslib.ndpointer(dtype=np.float64)]
-
-    # 3. call function mysum
-    mylib.main_int_treeshap(Nx, Nz, Nt, foreground.shape[1], depth, foreground, background, 
-                            Imap, ensemble.thresholds, values,
-                            ensemble.features, ensemble.children_left,
-                            ensemble.children_right, anchored, sym, results)
-
-    return results, ensemble
-
-
-
-
-
-def taylor_treeshap(model, foreground, background, Imap_inv=None):
-    """ 
-    Compute the Shapley-Taylor interaction indices by adapting the the TreeSHAP algorithm
-
-    Parameters
-    ----------
-    model : model_object
-        The tree based machine learning model that we want to explain. XGBoost, LightGBM, CatBoost,
-        and most tree-based scikit-learn models are supported.
-    foreground : numpy.array or pandas.DataFrame
-        The foreground dataset is the set of all points whose prediction we wish to explain.
-    background : numpy.array or pandas.DataFrame
-        The background dataset to use for integrating out missing features in the coallitional game.
-    Imap_inv : List(List(int))
-        A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
-        the columns 1 and 2 as a single feature.
-
-    Returns
-    -------
-    results : numpy.array
-        A (N_foreground, n_features, n_features) array
-    """
-
-    # Setup
-    Imap, foreground, background, model, ensemble = setup_treeshap(Imap_inv, foreground, background, model)
-    
-    # Shapes
-    d = foreground.shape[1]
-    n_features = np.max(Imap) + 1
-    depth = ensemble.features.shape[1]
-    Nx = foreground.shape[0]
-    Nz = background.shape[0]
-    Nt = ensemble.features.shape[0]
-
-    # Values at each leaf
-    values = np.ascontiguousarray(ensemble.values[..., -1]/Nz)
-
-    # Where to store the output
-    results = np.zeros((Nx, n_features, n_features))
-
-    ####### Wrap C / Python #######
-
-    # Find the shared library, the path depends on the platform and Python version    
-    project_root = os.path.dirname(__file__).split('pyfd')[0]
-    libfile = glob.glob(os.path.join(project_root, 'treeshap*.so'))[0]
-
-    # Open the shared library
-    mylib = ctypes.CDLL(libfile)
-
-    # Tell Python the argument and result types of function main_treeshap
-    mylib.main_taylor_treeshap.restype = ctypes.c_int
-    mylib.main_taylor_treeshap.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, 
-                                        ctypes.c_int, ctypes.c_int,
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.int32),
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.int32),
-                                        np.ctypeslib.ndpointer(dtype=np.int32),
-                                        np.ctypeslib.ndpointer(dtype=np.int32),
-                                        np.ctypeslib.ndpointer(dtype=np.float64)]
-
-    # 3. call function mysum
-    mylib.main_taylor_treeshap(Nx, Nz, Nt, d, depth, foreground, background, 
-                                Imap, ensemble.thresholds, values,
-                                ensemble.features, ensemble.children_left,
-                                ensemble.children_right, results)
-
-    return results, ensemble
-
-
-
-
-def additive_treeshap(model, foreground, background, Imap_inv=None, anchored=False):
-    """ 
-    Compute the Additive Components of h by adapting the the TreeSHAP algorithm
-
-    Parameters
-    ----------
-    model : model_object
-        The tree based machine learning model that we want to explain. XGBoost, LightGBM, CatBoost,
-        and most tree-based scikit-learn models are supported.
-    foreground : numpy.array or pandas.DataFrame
-        The foreground dataset is the set of all points whose prediction we wish to explain.
-    background : numpy.array or pandas.DataFrame
-        The background dataset to use for integrating out missing features in the coallitional game.
-    Imap_inv : List(List(int))
-        A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
-        the columns 1 and 2 as a single feature.
-
-    Returns
-    -------
-    results : numpy.array
-        A (N_foreground, n_features) array if `anchored=False`, otherwise a (N_foreground, N_background, n_features)
-        array of additive components.
-    """
-
-    sym = id(foreground) == id(background)
-    # sym = False
-    
-    # Setup
-    Imap, foreground, background, model, ensemble = setup_treeshap(Imap_inv, foreground, background, model)
-    
-    # Shapes
-    d = foreground.shape[1]
-    n_features = np.max(Imap) + 1
-    depth = ensemble.features.shape[1]
-    Nx = foreground.shape[0]
-    Nz = background.shape[0]
-    Nt = ensemble.features.shape[0]
-
-    # Values at each leaf
-    values = np.ascontiguousarray(ensemble.values[..., -1])
-
-    # Where to store the output
-    results = np.zeros((Nx, Nz, n_features)) if anchored else np.zeros((Nx, n_features)) 
-
-    ####### Wrap C / Python #######
-
-    # Find the shared library, the path depends on the platform and Python version    
-    project_root = os.path.dirname(__file__).split('pyfd')[0]
-    libfile = glob.glob(os.path.join(project_root, 'treeshap*.so'))[0]
-
-    # Open the shared library
-    mylib = ctypes.CDLL(libfile)
-
-    # Tell Python the argument and result types of function main_treeshap
-    mylib.main_add_treeshap.restype = ctypes.c_int
-    mylib.main_add_treeshap.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, 
-                                        ctypes.c_int, ctypes.c_int,
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.int32),
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.int32),
-                                        np.ctypeslib.ndpointer(dtype=np.int32),
-                                        np.ctypeslib.ndpointer(dtype=np.int32),
-                                        ctypes.c_int, ctypes.c_int,
-                                        np.ctypeslib.ndpointer(dtype=np.float64)]
-
-    # 3. call function mysum
-    mylib.main_add_treeshap(Nx, Nz, Nt, d, depth, foreground, background, 
-                            Imap, ensemble.thresholds, values,
-                            ensemble.features, ensemble.children_left,
-                            ensemble.children_right, anchored, sym, results)
-
-    return results, ensemble
-
-
-
-def additive_leafshap(model, foreground, background, Imap_inv=None):
-    
-    # Setup
-    Imap, foreground, background, model, ensemble = setup_treeshap(Imap_inv, foreground, background, model)
-    
-    # Shapes
-    d = foreground.shape[1]
-    n_features = np.max(Imap) + 1
-    depth = ensemble.features.shape[1]
-    Nx = foreground.shape[0]
-    Nz = background.shape[0]
-    Nt = ensemble.features.shape[0]
-
-    # Values at each leaf
-    values = np.ascontiguousarray(ensemble.values[..., -1])
-    
-    # Get the boundary boxes of all the leaves
-    M, box_min, box_max = get_leaf_box(d, Nt, ensemble.features, ensemble.thresholds, 
-                                       ensemble.children_left, ensemble.children_right)
-
-    # Where to store the output
-    results = np.zeros((Nx, n_features))
-
-    ####### Wrap C / Python #######
-
-    # Find the shared library, the path depends on the platform and Python version    
-    project_root = os.path.dirname(__file__).split('pyfd')[0]
-    libfile = glob.glob(os.path.join(project_root, 'treeshap*.so'))[0]
-
-    # Open the shared library
-    mylib = ctypes.CDLL(libfile)
-
-    # Tell Python the argument and result types of function main_treeshap
-    mylib.main_add_leafshap.restype = ctypes.c_int
-    mylib.main_add_leafshap.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, 
-                                        ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.int32),
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.int32),
-                                        np.ctypeslib.ndpointer(dtype=np.int32),
-                                        np.ctypeslib.ndpointer(dtype=np.int32),
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.float64)]
-
-    # 3. call function mysum
-    mylib.main_add_leafshap(Nx, Nz, Nt, d, depth, M, foreground, background, Imap,
-                            values, ensemble.features, ensemble.children_left, 
-                            ensemble.children_right, box_min, box_max, 
-                            results)
-
-    return results, ensemble
-
-
-
-def additive_waterfallshap(model, foreground, background, Imap_inv=None):
-    
-    # Setup
-    Imap, foreground, background, model, ensemble = setup_treeshap(Imap_inv, foreground, background, model)
-
-    # Shapes
-    d = foreground.shape[1]
-    n_features = np.max(Imap) + 1
-    depth = ensemble.features.shape[1]
-    Nx = foreground.shape[0]
-    Nz = background.shape[0]
-    Nt = ensemble.features.shape[0]
-
-    # Values at each leaf
-    values = np.ascontiguousarray(ensemble.values[..., -1])
-    
-    # Get the boundary boxes of all the leaves
-    max_depth = ensemble.max_depth
-
-    # Where to store the output
-    results = np.zeros((Nx, n_features))
-
-    ####### Wrap C / Python #######
-
-    # Find the shared library, the path depends on the platform and Python version    
-    project_root = os.path.dirname(__file__).split('pyfd')[0]
-    libfile = glob.glob(os.path.join(project_root, 'treeshap*.so'))[0]
-
-    # Open the shared library
-    mylib = ctypes.CDLL(libfile)
-
-    # Tell Python the argument and result types of function main_treeshap
-    mylib.main_add_waterfallshap.restype = ctypes.c_int
-    mylib.main_add_waterfallshap.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                                            ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                                            np.ctypeslib.ndpointer(dtype=np.float64),
-                                            np.ctypeslib.ndpointer(dtype=np.float64),
-                                            np.ctypeslib.ndpointer(dtype=np.int32),
-                                            np.ctypeslib.ndpointer(dtype=np.float64),
-                                            np.ctypeslib.ndpointer(dtype=np.float64),
-                                            np.ctypeslib.ndpointer(dtype=np.int32),
-                                            np.ctypeslib.ndpointer(dtype=np.int32),
-                                            np.ctypeslib.ndpointer(dtype=np.int32),
-                                            np.ctypeslib.ndpointer(dtype=np.float64),
-                                            np.ctypeslib.ndpointer(dtype=np.float64)]
-
-    # 3. call function mysum
-    mylib.main_add_waterfallshap(Nx, Nz, Nt, d, depth, max_depth, foreground, background, Imap,
-                            ensemble.thresholds, values, ensemble.features, ensemble.children_left, 
-                            ensemble.children_right, ensemble.node_sample_weight, results)
-
-    return results, ensemble
