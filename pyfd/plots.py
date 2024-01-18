@@ -1,7 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from copy import deepcopy
+from itertools import combinations
+from graphviz import Digraph
+from math import ceil
 
+
+from .fd_trees import GADGET_PDP, PDP_PFI_Tree
 
 
 def setup_pyplot_font(size=11):
@@ -187,3 +192,145 @@ def bar(phis, feature_labels, threshold=None, xerr=None, absolute=False, ax=None
     
     plt.gcf().tight_layout()
 
+
+
+
+def partial_dependence_plot(decomposition, foreground, background, features, Imap_inv, normalize_y=True, grouping=None, 
+                            figsize=(24, 10), n_cols=5, plot_hist=False, fd_trees_kwargs={}):
+    Imap_inv = deepcopy(Imap_inv)
+    for i in range(len(Imap_inv)):
+        assert len(Imap_inv[i]) == 1, "No feature grouping in PDP plots"
+        Imap_inv[i] = Imap_inv[i][0]
+    
+    anchored = decomposition[()].shape == (foreground.shape[0],)
+    additive_keys = [key for key in decomposition.keys() if len(key)==1]
+    d = len(additive_keys)
+
+    if anchored:
+        y_min = min([np.percentile(h, 15) for h in decomposition.values()])
+        y_max = max([np.percentile(h, 85) for h in decomposition.values()])
+    else:
+        y_min = min([h.min() for h in decomposition.values()])
+        y_max = max([h.max() for h in decomposition.values()])
+    delta_y = (y_max-y_min)
+    y_min = y_min - delta_y*0.01
+    y_max = y_max + delta_y*0.01
+
+    n_rows = ceil(d / n_cols)
+    _, ax = plt.subplots(n_rows, n_cols, figsize=figsize)
+    for i, key in enumerate(additive_keys):
+        curr_ax = ax[i//n_cols][i%n_cols]
+        x_min = foreground[:, Imap_inv[i]].min()
+        x_max = foreground[:, Imap_inv[i]].max()
+        # delta_x = (x_max-x_min)
+        # x_min = x_min - delta_x*0.05
+        # x_max = x_max + delta_x*0.05
+
+        if plot_hist:
+            _, _, rects = curr_ax.hist(foreground[:, Imap_inv[i]], bins=20, rwidth=0.95, color="gray", alpha=0.6, bottom=y_min)
+            max_height = max([h.get_height() for h in rects])
+            target_max_height = 0.5 * delta_y
+            for r in rects:
+                r.set_height(target_max_height*r.get_height()/max_height)
+        
+        if not anchored:
+            sorted_idx = np.argsort(foreground[:, Imap_inv[i]])
+            curr_ax.plot(foreground[sorted_idx, Imap_inv[i]], decomposition[key][sorted_idx], 'k-')
+        else:
+            if grouping is None:
+                n_groups = 1
+                groups = np.zeros(foreground.shape[1])
+            else:
+                assert id(foreground) ==  id(background) ,"grouping requires background=foreground"
+                decomp_copy = {}
+                decomp_copy[()] = decomposition[()]
+                decomp_copy[(1,)] = decomposition[key]
+                background_slice = np.delete(background, Imap_inv[i], axis=1)
+                features_slice = features.remove([Imap_inv[i]])
+                fd_tree = GADGET_PDP(features=features_slice, **fd_trees_kwargs) if grouping == "gadget-pdp" \
+                            else  PDP_PFI_Tree(features=features_slice, **fd_trees_kwargs) 
+                fd_tree.fit(background_slice, decomp_copy)
+                groups, rules = fd_tree.predict(background_slice, latex_rules=True)
+                n_groups = fd_tree.n_groups
+
+            for group_id in range(n_groups):
+                group_foreground = foreground[groups==group_id]
+                sorted_idx = np.argsort(group_foreground[:, Imap_inv[i]])
+                select = np.where(groups==group_id)[0][sorted_idx].reshape((-1, 1))
+                group_ice = decomposition[key][select, select.T]
+                # group_ice += mu[groups==group_id].mean()
+                curr_ax.plot(group_foreground[sorted_idx, Imap_inv[i]], group_ice, COLORS[group_id], alpha=0.01)
+                curr_ax.plot(group_foreground[sorted_idx, Imap_inv[i]], group_ice.mean(1), COLORS[group_id], label=rules[group_id])
+        
+            if groups is not None:
+                curr_ax.legend(fontsize=12, framealpha=1)
+        
+        # xticks labels depend on the type of feature
+        if features.types[Imap_inv[i]] in ["bool", "ordinal"]:
+            if features.types[i] == "ordinal":
+                categories = features.maps_[i].cats
+                # Truncate names if too long
+                if len(categories) > 5:
+                    categories = [name[0] for name in categories]
+            else:
+                categories = [False, True]
+            curr_ax.set_xticks(np.arange(len(categories)), labels=categories)
+                
+        curr_ax.grid('on')
+        curr_ax.set_xlabel(features.names_[Imap_inv[i]])
+        if i%n_cols == 0:
+            curr_ax.set_ylabel("Local Feature Attribution")
+        curr_ax.set_xlim(x_min, x_max)
+        if normalize_y:
+            curr_ax.set_ylim(y_min, y_max)
+            if not i%n_cols == 0:
+                curr_ax.yaxis.set_ticklabels([])
+
+
+
+def decomposition_graph(decomposition, feature_names):
+        
+    def interpolate_rgb(rgb_list_1, rgb_list_2, interp):
+        """ Linear interpolation interp * rbg_1 + (1 - interp) * rbg_2 """
+        out = ''
+        for color in range(3):
+            hex_color = hex( round(interp * rgb_list_1[color] + \
+                                   (1 - interp) * rgb_list_2[color]) )[2:]
+            if len(hex_color) == 1:
+                hex_color = '0' + hex_color
+            out += hex_color
+        return out
+
+    # Directed Graph of partial ordering
+    dot = Digraph(comment='Functional Decomposition', graph_attr={'ranksep': "0.75"},
+                    node_attr={'shape': 'rectangle', 'color': 'black', 'style': 'filled'})
+    U = [key for key in decomposition.keys() if len(key)>0]
+    n_ranks = max([len(u) for u in U])
+    ref_var = np.var(decomposition[()])
+    var = {u : 100 * np.mean(decomposition[u].mean(1)**2) / ref_var for u in U}
+    max_var = max(list(var.values()))
+    ranks_set = []
+    for _ in range(n_ranks):
+        ranks_set.append(set())
+
+    # Add each feature to the right set
+    for u in U:
+        ranks_set[ len(u)-1 ].add(u)
+    
+    # Print
+    my_red = color_dict["DEEL"]["neg"]
+    for elements in ranks_set:
+        with dot.subgraph() as s:
+            s.attr(rank='same')
+            # Loop over all features of the same rank
+            for u in elements:
+                s.node(str(u), f":".join([feature_names[i] for i in u]) + "\n" + \
+                               f"var={var[u]:.1f}%",
+                        fillcolor=f'#{interpolate_rgb(my_red, [255] * 3, var[u]/max_var)}',
+                        fontcolor='black')
+                if len(u) > 1:
+                    for u_subset in combinations(u, len(u)-1):
+                        dot.edge(str(u_subset), str(u))
+    
+    
+    return dot

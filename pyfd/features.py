@@ -182,6 +182,48 @@ class Features(object):
     #     feature_copy.ordinal = []
     #     return feature_copy
     
+
+    def remove(self, features_to_remove):
+        """ 
+        Remove the listed features. This will update the 
+        Imap and Imap_inv attributes of the class
+
+        Parameters
+        ----------
+        feature_groups : List(int)
+            A List containing the index of the features to remove.
+        
+        Returns
+        -------
+        feature_copy : Features
+            A copy of the Feature instance with removed features
+            and updated I_map and I_map_inv
+        """
+        assert type(features_to_remove) in (tuple, list)
+
+        feature_copy = deepcopy(self)
+        # TODO update Imap_inv and Imap
+        # # Update Imap_inv and feature_names
+        # for feature_group in feature_groups:
+        #     feature_copy.Imap_inv.append(feature_group)
+        #     for feature in feature_group:
+        #         feature_copy.Imap_inv.remove([feature])
+        # # Update I_map
+        # counter = 0
+        # for feature_group in feature_copy.Imap_inv:
+        #     for feature in feature_group:
+        #         feature_copy.Imap[feature] = counter
+        #     counter += 1
+        
+        feature_copy.names_ = [feature_copy.names_[i] for i in range(self.d) if not i in features_to_remove]
+        feature_copy.types = [feature_copy.types[i] for i in range(self.d) if not i in features_to_remove]
+        feature_copy.maps_ = [feature_copy.maps_[i] for i in range(self.d) if not i in features_to_remove]
+        # TODO handle nominal and non_nominal
+        feature_copy.nominal = []
+        feature_copy.non_nominal = []
+        return feature_copy
+    
+
     def group(self, feature_groups):
         """ 
         Put the select feature into groups. This will update the 

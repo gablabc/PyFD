@@ -6,13 +6,11 @@ import numpy as np
 from tqdm import tqdm
 import os
 from itertools import combinations
-from graphviz import Digraph
 from copy import deepcopy
 
 from sklearn.linear_model import LinearRegression, Ridge, LogisticRegression, PoissonRegressor
 from sklearn.pipeline import Pipeline
 
-from .plots import color_dict
 from .utils import check_Imap_inv, get_Imap_inv_from_pipeline, get_leaf_box, ravel, powerset, setup_treeshap
 
 
@@ -502,52 +500,3 @@ def get_CoE(decomposition, anchored=True):
     else:
         return factor * np.sqrt( np.mean( (decomposition[()][0] - h_add)**2 ) )
 
-
-
-
-def decomposition_graph(decomposition, feature_names):
-        
-    def interpolate_rgb(rgb_list_1, rgb_list_2, interp):
-        """ Linear interpolation interp * rbg_1 + (1 - interp) * rbg_2 """
-        out = ''
-        for color in range(3):
-            hex_color = hex( round(interp * rgb_list_1[color] + \
-                                   (1 - interp) * rgb_list_2[color]) )[2:]
-            if len(hex_color) == 1:
-                hex_color = '0' + hex_color
-            out += hex_color
-        return out
-
-    # Directed Graph of partial ordering
-    dot = Digraph(comment='Functional Decomposition', graph_attr={'ranksep': "0.75"},
-                    node_attr={'shape': 'rectangle', 'color': 'black', 'style': 'filled'})
-    U = [key for key in decomposition.keys() if len(key)>0]
-    n_ranks = max([len(u) for u in U])
-    ref_var = np.var(decomposition[()])
-    var = {u : 100 * np.mean(decomposition[u].mean(1)**2) / ref_var for u in U}
-    max_var = max(list(var.values()))
-    ranks_set = []
-    for _ in range(n_ranks):
-        ranks_set.append(set())
-
-    # Add each feature to the right set
-    for u in U:
-        ranks_set[ len(u)-1 ].add(u)
-    
-    # Print
-    my_red = color_dict["DEEL"]["neg"]
-    for elements in ranks_set:
-        with dot.subgraph() as s:
-            s.attr(rank='same')
-            # Loop over all features of the same rank
-            for u in elements:
-                s.node(str(u), f":".join([feature_names[i] for i in u]) + "\n" + \
-                               f"var={var[u]:.1f}%",
-                        fillcolor=f'#{interpolate_rgb(my_red, [255] * 3, var[u]/max_var)}',
-                        fontcolor='black')
-                if len(u) > 1:
-                    for u_subset in combinations(u, len(u)-1):
-                        dot.edge(str(u_subset), str(u))
-    
-    
-    return dot
