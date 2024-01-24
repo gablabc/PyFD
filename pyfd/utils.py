@@ -81,7 +81,7 @@ def get_Imap_inv_from_pipeline(Imap_inv, pipeline):
                 if type(transformer[1]) == SplineTransformer:            
                     degree = transformer[1].degree
                     n_knots = transformer[1].n_knots
-                    dim = n_knots + degree - 2
+                    dim = n_knots + degree - 2 + int(transformer[1].include_bias)
                     # Iterate over all columns the transformer acts upon
                     for i in transformer[2]:
                         Imap_inv_layer[i] = list(range(curr_idx, curr_idx+dim))

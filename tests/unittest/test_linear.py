@@ -42,7 +42,7 @@ def setup_toy_task(d_num, d_cat=0, n_samples=500, task="regression"):
 @pytest.mark.parametrize("d_num", [5, 10])
 @pytest.mark.parametrize("d_cat", [0, 5])
 @pytest.mark.parametrize("task", ["regression", "classification"])
-@pytest.mark.parametrize("num_encoding", ["identity", "bins", "splines"])
+@pytest.mark.parametrize("num_encoding", ["identity", "bins", "splines-bias", "splines-nbias"])
 def test_toy_linear(d_num, d_cat, task, num_encoding):
 
     # Setup data and model
@@ -50,7 +50,8 @@ def test_toy_linear(d_num, d_cat, task, num_encoding):
     X, y = setup_toy_task(d_num, d_cat, 1000, task)
     numerical_encoders = {"identity": FunctionTransformer(),
                           "bins": KBinsDiscretizer(encode='onehot-dense'),
-                          "splines": SplineTransformer(n_knots=4, knots='quantile', include_bias=False)}
+                          "splines-bias":  SplineTransformer(n_knots=4, knots='quantile', include_bias=True),
+                          "splines-nbias": SplineTransformer(n_knots=4, knots='quantile', include_bias=False)}
     if task == "regression":
         model = Ridge()
     else:
