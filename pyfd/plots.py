@@ -287,7 +287,7 @@ def partial_dependence_plot(decomposition, foreground, background, features, Ima
                 categories = features.maps_[column].cats
                 # Truncate names if too long
                 # if len(categories) > 5:
-                categories = [name[:6] for name in categories]
+                # categories = [name[:3] for name in categories]
                 rotation = 45
             else:
                 categories = [False, True]
@@ -304,6 +304,209 @@ def partial_dependence_plot(decomposition, foreground, background, features, Ima
             curr_ax.set_ylim(y_min, y_max)
             if not iter%n_cols == 0:
                 curr_ax.yaxis.set_ticklabels([])
+
+
+
+def attrib_scatter_plot(decomposition, phis, foreground, features,
+                        normalize_y=True, groups=None, figsize=(24, 10), n_cols=5):
+    
+    Imap_inv = deepcopy(features.Imap_inv)
+    for i in range(len(Imap_inv)):
+        assert len(Imap_inv[i]) == 1, "No feature grouping in scatter plots"
+        Imap_inv[i] = Imap_inv[i][0]
+    additive_keys = [(i,) for i in Imap_inv]
+    d = len(additive_keys)
+    
+    if groups is None:
+        n_groups = 1
+        groups = np.zeros(foreground.shape[0])
+        colors = ['gray']
+    elif isinstance(groups, np.ndarray):
+        n_groups = groups.max() + 1
+        colors = COLORS
+    else:
+        raise Exception("Groups must be None or a numpy array")
+    
+    if type(decomposition) == list:
+        assert len(decomposition) == n_groups
+        is_decomp_list = True
+        is_anchored_decomp = decomposition[0][()].shape == (foreground.shape[0],)
+    else:
+        is_decomp_list = False
+        is_anchored_decomp = decomposition[()].shape == (foreground.shape[0],)
+
+    if type(phis) == list:
+        assert len(phis) == n_groups
+        is_shap_list = True
+        is_anchored_shap = phis[0].ndim == 3
+        y_min = min([p.min() for p in phis])
+        y_max = max([p.max() for p in phis])
+        importance = np.max(np.stack([np.mean(p**2, axis=0) for p in phis]), axis=0)
+    else:
+        is_shap_list = False
+        is_anchored_shap = phis.ndim == 3
+        y_min = phis.min()
+        y_max = phis.max()
+        importance = np.mean(phis**2, axis=0)
+
+    delta_y = (y_max-y_min)
+    y_min = y_min - delta_y*0.01
+    y_max = y_max + delta_y*0.01
+    order = np.argsort(-importance)
+
+    if len(order) < n_cols:
+        n_cols = len(order)
+        n_rows = 1
+    else:
+        n_rows = ceil(d / n_cols)
+    _, ax = plt.subplots(n_rows, n_cols, figsize=figsize)
+    for iter, idx in enumerate(order):
+        curr_ax = ax[iter] if n_rows == 1 else ax[iter//n_cols][iter%n_cols]
+
+        # Key represents the name of the component
+        key = additive_keys[idx]
+        # To which column of X it corresponds
+        column = Imap_inv[idx]
+        x_min = foreground[:, column].min()
+        x_max = foreground[:, column].max()
+
+        # For each group plot the anchored components in color
+        for group_id in range(n_groups):
+            group_idxs = np.where(groups==group_id)[0]
+            group_foreground = foreground[group_idxs, column]
+            sorted_idx = np.argsort(group_foreground)
+            group_foreground = group_foreground[sorted_idx]
+            select = group_idxs[sorted_idx].reshape((-1, 1))
+            # Obtain the regional interventional decomposition H
+            if is_decomp_list:
+                H = decomposition[group_id]
+                if is_anchored_decomp:
+                    H = H.mean(-1)
+            else:
+                if is_anchored_decomp:
+                    H = decomposition[key][select, select.T].mean(-1)
+                else:
+                    H = decomposition[key][select.ravel()]
+            # Obtain the regional shap values Phis
+            if is_shap_list:
+                Phis = phis[group_id][sorted_idx, column]
+                if is_anchored_shap:
+                    Phis = Phis.mean(-1)
+            else:
+                if is_anchored_shap:
+                    Phis = phis[select, select.T, column].mean(-1)
+                else:
+                    Phis = phis[select.ravel(), column]
+
+
+            # For ordinal features, we add a jitter to better see the points
+            # and we spread the different background via the variable step
+            if features.types[i] in ["bool", "ordinal"]:
+                jitter = np.random.uniform(-0.05, 0.05, size=group_idxs)
+                step = 0.1 * (group_id - (n_groups-1) / 2)
+                curr_ax.scatter(group_foreground+jitter+step, Phis, alpha=0.25, c=colors[group_id])
+            else:
+                step = 0
+                curr_ax.scatter(group_foreground, Phis, alpha=0.25, c=colors[group_id])
+            
+            # Plot the PDP as a line
+            curr_ax.plot(group_foreground+step, H, 'k-', linewidth=3)
+            if n_groups > 1:
+                curr_ax.plot(group_foreground+step, H, colors[group_id], linewidth=2)
+    
+        # xticks labels for categorical data
+        if features.types[column] in ["bool", "ordinal", "nominal"]:
+            if features.types[column] in ["ordinal", "nominal"]:
+                categories = features.maps_[column].cats
+                # Truncate names if too long
+                # if len(categories) > 5:
+                # categories = [name[:3] for name in categories]
+                rotation = 45
+            else:
+                categories = [False, True]
+                rotation = 0
+            curr_ax.set_xticks(np.arange(len(categories)), labels=categories, rotation=rotation)
+        
+        # Set ticks and labels
+        curr_ax.grid('on')
+        curr_ax.set_xlabel(features.names_[column])
+        if iter%n_cols == 0:
+            curr_ax.set_ylabel("Local Feature Attribution")
+        curr_ax.set_xlim(x_min, x_max)
+        if normalize_y:
+            curr_ax.set_ylim(y_min, y_max)
+            if not iter%n_cols == 0:
+                curr_ax.yaxis.set_ticklabels([])
+
+
+
+def plot_legend(rules, figsize=(5, 0.6), ncol=4):
+    # Plot the legend separately
+    plt.figure(figsize=figsize)
+    for p in range(len(rules)):
+        plt.scatter(0, 0, alpha=0.5, c=COLORS[p], label=rules[p])
+    plt.legend(loc='center', ncol=ncol, prop={"size": 10}, framealpha=1)
+    plt.axis('off')
+
+
+
+# Visualize the strongest interactions
+def plot_interaction(i, j, background, Phis, features):
+    plt.figure()
+    if features.types[j] == "ordinal":
+        for category_idx, category in enumerate(features.maps[j].cats):
+            idx = background[:, j] == category_idx
+            plt.scatter(background[idx, i],
+                        Phis[idx, i, j], alpha=0.75, c=COLORS[category_idx],
+                        label=f"{features.names[j]}={category}")
+        plt.legend()
+        plt.xlabel(features.names[i])
+        plt.ylabel("Interaction")
+    else:
+        plt.scatter(background[:, i],
+                    background[:, j], c=2*Phis[:, i, j], 
+                    cmap='seismic', alpha=0.75)
+        plt.xlabel(features.names[i])
+        plt.ylabel(features.names[j])
+        plt.colorbar()
+    if features.types[i] == "ordinal":
+        plt.xticks(np.arange(len(features.maps[i].cats)),
+                   features.maps[i].cats)
+    # if features.types[j] == "ordinal":
+    #    plt.yticks(np.arange(len(features.maps[j].cats)),
+    #                features.maps[j].cats)
+
+
+def interactions_heatmap(Phis, features):
+    d = len(features)
+    # We normalize by the model variance
+    h_var = Phis.sum(-1).sum(-1).var()
+    Phi_imp = (Phis**2).mean(0) / h_var
+    np.fill_diagonal(Phi_imp, 0)
+    Phi_imp[Phi_imp < 0.0005] = 0
+
+    fig, ax = plt.subplots(figsize=(d, d))
+    im = ax.imshow(Phi_imp, cmap='Reds')
+
+    # Show all ticks and label them with the respective list entries
+    ax.set_xticks(np.arange(d))
+    ax.set_xticklabels(features.names)
+    ax.set_yticks(np.arange(d))
+    ax.set_yticklabels(features.names)
+
+    # Rotate the tick labels and set their alignment.
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+                                    rotation_mode="anchor")
+
+    # Loop over data dimensions and create text annotations.
+    for i in range(d):
+        for j in range(d):
+            if Phi_imp[i, j] > 0:
+                ax.text(j, i, f"{Phi_imp[i, j]:.3f}",
+                        ha="center", va="center", color="w", size=15)
+
+    # ax.set_title("Shapley-Taylor Global indices")
+    fig.tight_layout()
 
 
 

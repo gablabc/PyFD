@@ -441,19 +441,43 @@ def get_component_tree(model, foreground, background, Imap_inv=None, anchored=Fa
 
 
 
-
-def get_PDP_PFI_importance(decomposition, show_bar=True):
+def get_PDP_PFI_importance(decomposition, show_bar=True, groups=None):
+    # Get the additive decomposition
     keys = decomposition.keys()
     additive_keys = [key for key in keys if len(key)==1]
     D = len(additive_keys)
     shape_decomposition = decomposition[additive_keys[0]].shape
     assert shape_decomposition[0] == shape_decomposition[1], "The decomposition must be anchored with foreground=background"
-    I_PDP = np.zeros(D)
-    I_PFI = np.zeros(D)
-    for d in tqdm(range(D), desc="PDP/PFI Importance", disable=not show_bar):
-        I_PDP[d] = np.mean(decomposition[additive_keys[d]].mean(1)**2)
-        I_PFI[d] = np.mean(decomposition[additive_keys[d]].mean(0)**2)
-    return I_PDP, I_PFI, additive_keys
+    
+    # Assert if there is grouping
+    if groups is None:
+        n_groups = 1
+    elif isinstance(groups, np.ndarray):
+        n_groups = groups.max() + 1
+        assert shape_decomposition[0] == len(groups), "Each foreground element must have a group index"
+    else:
+        raise Exception("Groups must be None or a numpy array")
+
+    # No grouping
+    if n_groups == 1:
+        I_PDP = np.zeros(D)
+        I_PFI = np.zeros(D)
+        for d in tqdm(range(D), desc="PDP/PFI Importance", disable=not show_bar):
+            I_PDP[d] = np.mean(decomposition[additive_keys[d]].mean(1)**2)
+            I_PFI[d] = np.mean(decomposition[additive_keys[d]].mean(0)**2)
+        return I_PDP, I_PFI, additive_keys
+    # Separate feature importance for each group
+    else:
+        I_PDP = np.zeros((n_groups, D))
+        I_PFI = np.zeros((n_groups, D))
+        for group_id in range(n_groups):
+            select = np.where(groups==group_id)[0].reshape((-1, 1))
+            for d in tqdm(range(D), desc="PDP/PFI Importance", disable=not show_bar):
+                H = decomposition[additive_keys[d]][select, select.T]
+                I_PDP[group_id, d] = np.mean(H.mean(1)**2)
+                I_PFI[group_id, d] = np.mean(H.mean(0)**2)
+        return I_PDP, I_PFI, additive_keys
+
 
 
 def get_H_interaction(decomposition):
