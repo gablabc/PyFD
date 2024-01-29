@@ -182,8 +182,6 @@ def get_components_brute_force(h, foreground, background, Imap_inv=None, interac
         for key, component in decomposition.items():
             if len(key) >= 1:
                 decomposition[key] = np.column_stack((component.mean(1), component.std(1)))
-            else:
-                decomposition[key] = np.stack((component.mean(), component.std()))
     return decomposition
 
 
@@ -348,13 +346,7 @@ def get_component_tree(model, foreground, background, Imap_inv=None, anchored=Fa
     # 0-th component
     decomp = {}
     preds = ensemble.predict(background) if ensemble.num_outputs == 1 else ensemble.predict(background)[..., -1]
-    if anchored:
-        decomp[()] = preds
-    else:
-        decomp[()] = preds.mean()
-
-    # Where to store the output
-    results = np.zeros((Nx, Nz, n_features)) if anchored else np.zeros((Nx, n_features)) 
+    decomp[()] = preds
 
     ####### Wrap C / Python #######
 
@@ -366,6 +358,9 @@ def get_component_tree(model, foreground, background, Imap_inv=None, anchored=Fa
     mylib = ctypes.CDLL(libfile)
 
     if algorithm == "recurse":
+        # Where to store the output
+        results = np.zeros((Nx, Nz, n_features))
+
         # Tell Python the argument and result types of function main_treeshap
         mylib.main_add_treeshap.restype = ctypes.c_int
         mylib.main_add_treeshap.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, 
@@ -378,15 +373,26 @@ def get_component_tree(model, foreground, background, Imap_inv=None, anchored=Fa
                                             np.ctypeslib.ndpointer(dtype=np.int32),
                                             np.ctypeslib.ndpointer(dtype=np.int32),
                                             np.ctypeslib.ndpointer(dtype=np.int32),
-                                            ctypes.c_int, ctypes.c_int,
+                                            ctypes.c_int,
                                             np.ctypeslib.ndpointer(dtype=np.float64)]
 
         # 3. call function mysum
         mylib.main_add_treeshap(Nx, Nz, Nt, d, depth, foreground, background, 
                                 Imap, ensemble.thresholds, values,
                                 ensemble.features, ensemble.children_left,
-                                ensemble.children_right, anchored, sym, results)
+                                ensemble.children_right, sym, results)
+    
+        for i in range(D):
+            if anchored:
+                decomp[(i,)] = results[..., i]
+            else:
+                decomp[(i,)] = np.stack((results[..., i].mean(-1), 
+                                         results[..., i].std(-1)), axis=-1)
+    
     elif algorithm == "leaf":
+        # Where to store the output
+        results = np.zeros((Nx, n_features))
+
         # Get the boundary boxes of all the leaves
         M, box_min, box_max = get_leaf_box(d, Nt, ensemble.features, ensemble.thresholds, 
                                         ensemble.children_left, ensemble.children_right)
@@ -411,7 +417,15 @@ def get_component_tree(model, foreground, background, Imap_inv=None, anchored=Fa
                                 values, ensemble.features, ensemble.children_left, 
                                 ensemble.children_right, box_min, box_max, 
                                 results)
+    
+        # We cannot compute standard deviation with this estimator
+        for i in range(D):
+            decomp[(i,)] = np.stack((results[..., i], -1 * np.ones(Nx)), axis=-1)
+
     elif algorithm == "waterfall":
+        # Where to store the output
+        results = np.zeros((Nx, n_features))
+
         max_depth = ensemble.max_depth
         # Tell Python the argument and result types of function main_treeshap
         mylib.main_add_waterfallshap.restype = ctypes.c_int
@@ -432,11 +446,13 @@ def get_component_tree(model, foreground, background, Imap_inv=None, anchored=Fa
         mylib.main_add_waterfallshap(Nx, Nz, Nt, d, depth, max_depth, foreground, background, Imap,
                                 ensemble.thresholds, values, ensemble.features, ensemble.children_left, 
                                 ensemble.children_right, ensemble.node_sample_weight, results)
+
+        # We cannot compute standard deviation with this estimator
+        for i in range(D):
+            decomp[(i,)] = np.stack((results[..., i], -1 * np.ones(Nx)), axis=-1)
     else:
         raise Exception("Invalid algorithm, pick from `recurse` `leaf` or `waterfall`")
     
-    for i in range(D):
-        decomp[(i,)] = results[..., i]
     return decomp
 
 
@@ -449,7 +465,7 @@ def get_PDP_PFI_importance(decomposition, show_bar=True, groups=None):
     shape_decomposition = decomposition[additive_keys[0]].shape
     assert shape_decomposition[0] == shape_decomposition[1], "The decomposition must be anchored with foreground=background"
     
-    # Assert if there is grouping
+    # Assert if explanations are regional
     if groups is None:
         n_groups = 1
     elif isinstance(groups, np.ndarray):
@@ -503,24 +519,24 @@ def get_h_add(decomposition, anchored=True):
         if anchored:
             h_add += decomposition[key]
         else:
-            h_add += decomposition[key][0]
+            h_add += decomposition[key][:, 0]
     # Reference term
     if anchored:
         h_add += decomposition[()].reshape((1, -1))
     else:
-        h_add += decomposition[()][0]
+        h_add += decomposition[()].mean()
     return h_add
 
 
 
-def get_CoE(decomposition, anchored=True):
-    if anchored:
-        factor = 100 / np.std(decomposition[()])
-    else:
-        factor = 100 / decomposition[()][1]
+def get_CoE(decomposition, anchored=True, foreground_preds=None):
+    # We assume background-foreground in that case
+    if foreground_preds is None:
+        foreground_preds = decomposition[()]
+    factor = 100 / np.std(foreground_preds)
     h_add = get_h_add(decomposition, anchored)
     if anchored:
-        return factor * np.sqrt( np.mean( (decomposition[()] - h_add.mean(1))**2 ) )
+        return factor * np.sqrt( np.mean( (foreground_preds - h_add.mean(1))**2 ) )
     else:
-        return factor * np.sqrt( np.mean( (decomposition[()][0] - h_add)**2 ) )
+        return factor * np.sqrt( np.mean( (foreground_preds - h_add)**2 ) )
 

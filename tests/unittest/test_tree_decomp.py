@@ -24,7 +24,7 @@ def compare_recursive_brute(X, model, black_box, sym=False, Imap_inv=None):
 
     # Make sure we output the same result
     for key in tree_decomp.keys():
-        assert np.isclose(tree_decomp[key], brute_decomp[key][..., 0]).all(), "Non-Anchored tree from brute force"
+        assert np.isclose(tree_decomp[key], brute_decomp[key]).all(), "Non-Anchored tree from brute force"
     
 
     # Run the tree decomp (anchored)
@@ -49,7 +49,7 @@ def compare_recursive_leaf(X, model, Imap_inv=None):
 
     # Make sure we output the same result
     for key in recurse_decomp.keys():
-        assert np.isclose(recurse_decomp[key], leaf_decomp[key]).all(), "Tree recursive and Tree leaf disagree"
+        assert np.isclose(recurse_decomp[key][..., 0], leaf_decomp[key][..., 0]).all(), "Tree recursive and Tree leaf disagree"
 
 
 

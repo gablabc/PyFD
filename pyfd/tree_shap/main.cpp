@@ -113,13 +113,13 @@ int main_int_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* foregrou
 //     int* feature : row major (Nt, depth) array of feature index
 //     int* left_child : row major (Nt, depth) array of left child index
 //     int* right_child : row major (Nt, depth) array of right child index
-//     int anchored : value 1 for anchored decomposition and 0 for interventional
 //     int sym : value 1 if foreground is the same as background
+//     double* result : row major (Nx, Nz, d)
 // ********************************************************************************
 extern "C"
 int main_add_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* foreground, double* background,
                         int* I_map, double* threshold, double* value, int* feature, 
-                        int* left_child, int* right_child, int anchored, int sym, double* result) {
+                        int* left_child, int* right_child, int sym, double* result) {
     // Cast to a boolean
     int f_index, b_index, t_index, result_index_1, result_index_2;
     // The number of high-level features
@@ -142,15 +142,15 @@ int main_add_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* foregrou
 
                 if (sym){
                     vector<int> ISX, ISZ;
-                    result_index_1 = anchored ? Nz*n_features*i + n_features*j : n_features*i;
-                    result_index_2 = anchored ? Nz*n_features*j + n_features*i : n_features*j;
+                    result_index_1 = Nz*n_features*i + n_features*j;
+                    result_index_2 = Nz*n_features*j + n_features*i;
                     // Start the recursion
                     recurse_additive_sym(0, &foreground[f_index], &background[b_index], I_map, &feature[t_index],
                                     &left_child[t_index], &right_child[t_index], &threshold[t_index], &value[t_index], 
                                     n_features, in_ISX, in_ISZ, ISX, ISZ, &result[result_index_1], &result[result_index_2]);
                 }
                 else {
-                    result_index_1 = anchored ? Nz*n_features*i + n_features*j : n_features*i;
+                    result_index_1 = Nz*n_features*i + n_features*j;
                     // Start the recursion
                     recurse_additive(0, &foreground[f_index], &background[b_index], I_map, &feature[t_index], 
                                     &left_child[t_index], &right_child[t_index], &threshold[t_index], &value[t_index], 
@@ -159,12 +159,6 @@ int main_add_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* foregrou
             }
         }
         bar.update();
-    }
-    if (!anchored){
-        // Rescale w.r.t the number of background instances
-        for (int i(0); i < Nx*n_features; i++){
-            result[i] /= Nz;
-        }
     }
     std::cout << std::endl;
     
