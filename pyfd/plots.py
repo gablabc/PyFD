@@ -452,22 +452,32 @@ def plot_legend(rules, figsize=(5, 0.6), ncol=4):
 
 # Visualize the strongest interactions
 def plot_interaction(i, j, background, Phis, features):
+    names = features.print_names()
     plt.figure()
     if features.types[j] == "ordinal":
-        for category_idx, category in enumerate(features.maps[j].cats):
+        for category_idx, category in enumerate(features.maps_[j].cats):
             idx = background[:, j] == category_idx
             plt.scatter(background[idx, i],
                         Phis[idx, i, j], alpha=0.75, c=COLORS[category_idx],
-                        label=f"{features.names[j]}={category}")
+                        label=f"{names[j]}={category}")
         plt.legend()
-        plt.xlabel(features.names[i])
+        plt.xlabel(names[i])
+        plt.ylabel("Interaction")
+    elif features.types[j] == "bool":
+        for value in [False, True]:
+            idx = np.isclose(background[:, j], int(value))
+            plt.scatter(background[idx, i],
+                        Phis[idx, i, j], alpha=0.75, c=COLORS[int(value)],
+                        label=f"{names[j]}={value}")
+        plt.legend()
+        plt.xlabel(names[i])
         plt.ylabel("Interaction")
     else:
         plt.scatter(background[:, i],
                     background[:, j], c=2*Phis[:, i, j], 
                     cmap='seismic', alpha=0.75)
-        plt.xlabel(features.names[i])
-        plt.ylabel(features.names[j])
+        plt.xlabel(names[i])
+        plt.ylabel(names[j])
         plt.colorbar()
     if features.types[i] == "ordinal":
         plt.xticks(np.arange(len(features.maps[i].cats)),
@@ -477,8 +487,8 @@ def plot_interaction(i, j, background, Phis, features):
     #                features.maps[j].cats)
 
 
-def interactions_heatmap(Phis, features):
-    d = len(features)
+def interactions_heatmap(Phis, features_names):
+    d = len(features_names)
     # We normalize by the model variance
     h_var = Phis.sum(-1).sum(-1).var()
     Phi_imp = (Phis**2).mean(0) / h_var
@@ -490,9 +500,9 @@ def interactions_heatmap(Phis, features):
 
     # Show all ticks and label them with the respective list entries
     ax.set_xticks(np.arange(d))
-    ax.set_xticklabels(features.names)
+    ax.set_xticklabels(features_names)
     ax.set_yticks(np.arange(d))
-    ax.set_yticklabels(features.names)
+    ax.set_yticklabels(features_names)
 
     # Rotate the tick labels and set their alignment.
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
