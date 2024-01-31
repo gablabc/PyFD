@@ -5,7 +5,7 @@ import glob
 import numpy as np
 from tqdm import tqdm
 import os
-from .utils import check_Imap_inv, setup_treeshap, ravel, powerset
+from .utils import check_Imap_inv, setup_treeshap, get_leaf_box, ravel, powerset
 
 
 
@@ -170,7 +170,7 @@ def lattice_shap(h, foreground, background, interactions, Imap_inv=None, show_ba
 
 
 
-def interventional_treeshap(model, foreground, background, Imap_inv=None, anchored=False):
+def interventional_treeshap(model, foreground, background, Imap_inv=None, anchored=False, algorithm="recurse"):
     """ 
     Compute the Interventional Shapley Values with the TreeSHAP algorithm
 
@@ -196,23 +196,24 @@ def interventional_treeshap(model, foreground, background, Imap_inv=None, anchor
 
     sym = id(foreground) == id(background)
 
+    if anchored and algorithm == 'leaf':
+        raise Exception("Anchored decompositions are only supported by the `recurse` algorithm")
+    
     # Setup
     Imap_inv, _, is_full_partition = check_Imap_inv(Imap_inv, background.shape[1])
     assert is_full_partition, "TreeSHAP requires Imap_inv to be a partition of the input columns"
     Imap, foreground, background, model, ensemble = setup_treeshap(Imap_inv, foreground, background, model)
     
     # Shapes
+    d = foreground.shape[1]
+    Nx = foreground.shape[0]
+    Nz = background.shape[0]
     Nt = ensemble.features.shape[0]
     n_features = np.max(Imap) + 1
     depth = ensemble.features.shape[1]
-    Nx = foreground.shape[0]
-    Nz = background.shape[0]
 
     # Values at each leaf
     values = np.ascontiguousarray(ensemble.values[..., -1])
-
-    # Where to store the output
-    results = np.zeros((Nx, Nz, n_features)) if anchored else np.zeros((Nx, n_features)) 
 
     ####### Wrap C / Python #######
 
@@ -223,26 +224,62 @@ def interventional_treeshap(model, foreground, background, Imap_inv=None, anchor
     # Open the shared library
     mylib = ctypes.CDLL(libfile)
 
-    # Tell Python the argument and result types of function main_treeshap
-    mylib.main_int_treeshap.restype = ctypes.c_int
-    mylib.main_int_treeshap.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, 
-                                        ctypes.c_int, ctypes.c_int,
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.int32),
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.float64),
-                                        np.ctypeslib.ndpointer(dtype=np.int32),
-                                        np.ctypeslib.ndpointer(dtype=np.int32),
-                                        np.ctypeslib.ndpointer(dtype=np.int32),
-                                        ctypes.c_int, ctypes.c_int,
-                                        np.ctypeslib.ndpointer(dtype=np.float64)]
+    if algorithm == "recurse":
+        # Where to store the output
+        results = np.zeros((Nx, Nz, n_features)) if anchored else np.zeros((Nx, n_features)) 
 
-    # 3. call function mysum
-    mylib.main_int_treeshap(Nx, Nz, Nt, foreground.shape[1], depth, foreground, background, 
-                            Imap, ensemble.thresholds, values,
-                            ensemble.features, ensemble.children_left,
-                            ensemble.children_right, anchored, sym, results)
+        # Tell Python the argument and result types of function main_treeshap
+        mylib.main_recurse_treeshap.restype = ctypes.c_int
+        mylib.main_recurse_treeshap.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, 
+                                            ctypes.c_int, ctypes.c_int,
+                                            np.ctypeslib.ndpointer(dtype=np.float64),
+                                            np.ctypeslib.ndpointer(dtype=np.float64),
+                                            np.ctypeslib.ndpointer(dtype=np.int32),
+                                            np.ctypeslib.ndpointer(dtype=np.float64),
+                                            np.ctypeslib.ndpointer(dtype=np.float64),
+                                            np.ctypeslib.ndpointer(dtype=np.int32),
+                                            np.ctypeslib.ndpointer(dtype=np.int32),
+                                            np.ctypeslib.ndpointer(dtype=np.int32),
+                                            ctypes.c_int, ctypes.c_int,
+                                            np.ctypeslib.ndpointer(dtype=np.float64)]
+
+        # 3. call function mysum
+        mylib.main_recurse_treeshap(Nx, Nz, Nt, foreground.shape[1], depth, foreground, background, 
+                                Imap, ensemble.thresholds, values,
+                                ensemble.features, ensemble.children_left,
+                                ensemble.children_right, anchored, sym, results)
+    elif algorithm == "leaf":
+                # Where to store the output
+        results = np.zeros((Nx, n_features))
+        max_var = min(ensemble.max_depth, n_features)
+
+        # Get the boundary boxes of all the leaves
+        M, box_min, box_max = get_leaf_box(d, Nt, ensemble.features, ensemble.thresholds, 
+                                        ensemble.children_left, ensemble.children_right)
+
+        # Tell Python the argument and result types of function main_treeshap
+        mylib.main_leaf_treeshap.restype = ctypes.c_int
+        mylib.main_leaf_treeshap.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, 
+                                            ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                            np.ctypeslib.ndpointer(dtype=np.float64),
+                                            np.ctypeslib.ndpointer(dtype=np.float64),
+                                            np.ctypeslib.ndpointer(dtype=np.int32),
+                                            np.ctypeslib.ndpointer(dtype=np.float64),
+                                            np.ctypeslib.ndpointer(dtype=np.int32),
+                                            np.ctypeslib.ndpointer(dtype=np.int32),
+                                            np.ctypeslib.ndpointer(dtype=np.int32),
+                                            np.ctypeslib.ndpointer(dtype=np.float64),
+                                            np.ctypeslib.ndpointer(dtype=np.float64),
+                                            np.ctypeslib.ndpointer(dtype=np.float64)]
+
+        # 3. call function mysum
+        mylib.main_leaf_treeshap(Nx, Nz, Nt, d, depth, M, max_var, foreground, background, Imap,
+                                values, ensemble.features, ensemble.children_left, 
+                                ensemble.children_right, box_min, box_max, 
+                                results)
+    
+    else:
+        raise Exception("Invalid algorithm, pick from `recurse` or `leaf`")
 
     return results, ensemble
 

@@ -3,6 +3,7 @@
 #ifndef __UTILS
 #define __UTILS
 
+#include <algorithm>
 #include <vector>
 #include <stack>
 
@@ -107,6 +108,22 @@ int integer_exp(int base, int expon){
 }
 
 
+// Assert if s is in S
+bool isin_S(int s, int S, vector<int>& branch_I){
+    auto it = find(branch_I.begin(), branch_I.end(), s); 
+
+    // If element was found 
+    if (it != branch_I.end())  
+    { 
+        // calculating the index 
+        int index = it - branch_I.begin(); 
+        if ((S & (1 << index)) > 0) {return true;}
+        else {return false;}
+    } 
+    else { 
+        return false;
+    } 
+}
 
 
 class FeatureSet {

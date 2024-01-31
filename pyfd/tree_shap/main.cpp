@@ -27,9 +27,10 @@
 //     int* right_child : row major (Nt, depth) array of right child index
 //     int anchored : value 1 for anchored decomposition and 0 for interventional
 //     int sym : value 1 if foreground is the same as background
+//     double* result : row major (Nx, Nz, n_features) if anchored else (Nx, n_features)
 // ********************************************************************************
 extern "C"
-int main_int_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* foreground, double* background,
+int main_recurse_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* foreground, double* background,
                       int* I_map, double* threshold, double* value, int* feature, 
                       int* left_child, int* right_child, int anchored, int sym, double* result) {
     // Cast to a boolean
@@ -114,10 +115,10 @@ int main_int_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* foregrou
 //     int* left_child : row major (Nt, depth) array of left child index
 //     int* right_child : row major (Nt, depth) array of right child index
 //     int sym : value 1 if foreground is the same as background
-//     double* result : row major (Nx, Nz, d)
+//     double* result : row major (Nx, Nz, n_features)
 // ********************************************************************************
 extern "C"
-int main_add_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* foreground, double* background,
+int main_recurse_additive(int Nx, int Nz, int Nt, int d, int depth, double* foreground, double* background,
                         int* I_map, double* threshold, double* value, int* feature, 
                         int* left_child, int* right_child, int sym, double* result) {
     // Cast to a boolean
@@ -183,6 +184,7 @@ int main_add_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* foregrou
 //     int* feature : row major (Nt, depth) array of feature index
 //     int* left_child : row major (Nt, depth) array of left child index
 //     int* right_child : row major (Nt, depth) array of right child index
+//     double* result : row major (Nx, n_features, n_features)
 // ********************************************************************************
 extern "C"
 int main_taylor_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* foreground, double* background,
@@ -231,6 +233,52 @@ int main_taylor_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* foreg
 
 
 
+// ********************************************************************************
+//                                   Parameters
+// ********************************************************************************
+//     int Nx : number of foreground instances
+//     int Nz : number of background instances
+//     int Nt : number of trees
+//     int d  : number of input features
+//     int depth : max depth of the tree ensemble
+//     int M : TODO
+//     int max_var : max(n_features, depth) maximum number of players in leaf game
+//     double* foreground : row major (Nx, d) array of foreground data
+//     double* background : row major (Nz, d) array of background data
+//     int* I_map : function mapping features to their feature group
+//     double* value_: row major (Nt, depth) array of values
+//     int* feature : row major (Nt, depth) array of feature index
+//     int* left_child : row major (Nt, depth) array of left child index
+//     int* right_child : row major (Nt, depth) array of right child index
+//     double* partition_min_ : TODO
+//     double* partition_max_ : TODO
+//     double* result : row major (Nx, n_features)
+// ********************************************************************************
+extern "C"
+int main_leaf_treeshap(int Nx, int Nz, int Nt, int d, int depth, int M, int max_var,
+                         double* foreground, double* background, int* I_map,
+                         double* value_, int* feature_, int* left_child_, int* right_child_,
+                         double* partition_min_, double* partition_max_, double* result) {
+    
+    // Load data instances
+    Matrix<double> X_f = createMatrix<double>(Nx, d, foreground);
+    Matrix<double> X_b = createMatrix<double>(Nz, d, background);
+
+    // Load tree structure
+    Matrix<double> value = createMatrix<double>(Nt, depth, value_);
+    Matrix<int> feature = createMatrix<int>(Nt, depth, feature_);
+    Matrix<int> left_child  = createMatrix<int>(Nt, depth, left_child_);
+    Matrix<int> right_child = createMatrix<int>(Nt, depth, right_child_);
+    Tensor<double> partition_min = createTensor<double>(Nt, M, d, partition_min_);
+    Tensor<double> partition_max = createTensor<double>(Nt, M, d, partition_max_);
+    
+    leaf_treeshap(X_f, X_b, feature, left_child, right_child, partition_min, partition_max, value, I_map, max_var, result);
+    cout << endl;
+
+    return 0;
+}
+
+
 
 // ********************************************************************************
 //                                   Parameters
@@ -250,9 +298,10 @@ int main_taylor_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* foreg
 //     int* right_child : row major (Nt, depth) array of right child index
 //     double* partition_min_ : TODO
 //     double* partition_max_ : TODO
+//     double* result : row major (Nx, n_features)
 // ********************************************************************************
 extern "C"
-int main_add_leafshap(int Nx, int Nz, int Nt, int d, int depth, int M,
+int main_leaf_additive(int Nx, int Nz, int Nt, int d, int depth, int M,
                          double* foreground, double* background, int* I_map,
                          double* value_, int* feature_, int* left_child_, int* right_child_,
                          double* partition_min_, double* partition_max_, double* result) {

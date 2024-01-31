@@ -362,8 +362,8 @@ def get_component_tree(model, foreground, background, Imap_inv=None, anchored=Fa
         results = np.zeros((Nx, Nz, n_features))
 
         # Tell Python the argument and result types of function main_treeshap
-        mylib.main_add_treeshap.restype = ctypes.c_int
-        mylib.main_add_treeshap.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, 
+        mylib.main_recurse_additive.restype = ctypes.c_int
+        mylib.main_recurse_additive.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, 
                                             ctypes.c_int, ctypes.c_int,
                                             np.ctypeslib.ndpointer(dtype=np.float64),
                                             np.ctypeslib.ndpointer(dtype=np.float64),
@@ -377,7 +377,7 @@ def get_component_tree(model, foreground, background, Imap_inv=None, anchored=Fa
                                             np.ctypeslib.ndpointer(dtype=np.float64)]
 
         # 3. call function mysum
-        mylib.main_add_treeshap(Nx, Nz, Nt, d, depth, foreground, background, 
+        mylib.main_recurse_additive(Nx, Nz, Nt, d, depth, foreground, background, 
                                 Imap, ensemble.thresholds, values,
                                 ensemble.features, ensemble.children_left,
                                 ensemble.children_right, sym, results)
@@ -398,8 +398,8 @@ def get_component_tree(model, foreground, background, Imap_inv=None, anchored=Fa
                                         ensemble.children_left, ensemble.children_right)
 
         # Tell Python the argument and result types of function main_treeshap
-        mylib.main_add_leafshap.restype = ctypes.c_int
-        mylib.main_add_leafshap.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, 
+        mylib.main_leaf_additive.restype = ctypes.c_int
+        mylib.main_leaf_additive.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, 
                                             ctypes.c_int, ctypes.c_int, ctypes.c_int,
                                             np.ctypeslib.ndpointer(dtype=np.float64),
                                             np.ctypeslib.ndpointer(dtype=np.float64),
@@ -413,7 +413,7 @@ def get_component_tree(model, foreground, background, Imap_inv=None, anchored=Fa
                                             np.ctypeslib.ndpointer(dtype=np.float64)]
 
         # 3. call function mysum
-        mylib.main_add_leafshap(Nx, Nz, Nt, d, depth, M, foreground, background, Imap,
+        mylib.main_leaf_additive(Nx, Nz, Nt, d, depth, M, foreground, background, Imap,
                                 values, ensemble.features, ensemble.children_left, 
                                 ensemble.children_right, box_min, box_max, 
                                 results)
