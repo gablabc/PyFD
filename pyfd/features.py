@@ -169,7 +169,7 @@ class Features(object):
         return print_res
 
     def __len__(self):
-        return self.d
+        return len(self.Imap_inv)
     
     # def select(self, i_range):
     #     """ Return a copy using only a subset of features """
@@ -218,6 +218,7 @@ class Features(object):
         feature_copy.names_ = [feature_copy.names_[i] for i in range(self.d) if not i in features_to_remove]
         feature_copy.types = [feature_copy.types[i] for i in range(self.d) if not i in features_to_remove]
         feature_copy.maps_ = [feature_copy.maps_[i] for i in range(self.d) if not i in features_to_remove]
+        
         # TODO handle nominal and non_nominal
         feature_copy.nominal = []
         feature_copy.non_nominal = []
