@@ -19,7 +19,7 @@ def compare_shap_implementations(X, model, black_box, sym=False, algorithm="recu
         X = background
 
     # Run the custom treeshap (non-anchored)
-    custom_shap, _ = interventional_treeshap(model, X, background, anchored=False, algorithm=algorithm)
+    custom_shap = interventional_treeshap(model, X, background, anchored=False, algorithm=algorithm)
 
     # Run the exact explainer
     masker = Independent(background, max_samples=100)
@@ -32,7 +32,7 @@ def compare_shap_implementations(X, model, black_box, sym=False, algorithm="recu
 
     # Run the custom treeshap (anchored)
     if algorithm == "recurse":
-        custom_shap, _ = interventional_treeshap(model, X, background, anchored=True, algorithm=algorithm)
+        custom_shap = interventional_treeshap(model, X, background, anchored=True, algorithm=algorithm)
 
         # Make sure we output the same result
         assert np.isclose(orig_shap, custom_shap.mean(1)).all(), "Anchored Different from ExactExplainer"
@@ -52,14 +52,14 @@ def check_shap_coallition(X, model, black_box, Imap_inv):
     gaps = black_box(X) - black_box(background).mean()
     
     # Run the recurse treeshap
-    recurse_shap, _ = interventional_treeshap(model, X, background, Imap_inv=Imap_inv, algorithm="recurse")
+    recurse_shap = interventional_treeshap(model, X, background, Imap_inv=Imap_inv, algorithm="recurse")
     assert recurse_shap.shape[1] == len(Imap_inv), "Not one SHAP value per coallition"
 
     # Make sure the SHAP values add up to the gaps
     assert np.isclose(gaps, recurse_shap.sum(1)).all(), "Recurse treeSHAP does not sum to h(x) - E[h(z)]"
 
     # Run the custom treeshap
-    leaf_shap, _ = interventional_treeshap(model, X, background, Imap_inv=Imap_inv, algorithm="leaf")
+    leaf_shap = interventional_treeshap(model, X, background, Imap_inv=Imap_inv, algorithm="leaf")
 
     # Make sure the recurse and leaf lead to the same result
     assert np.isclose(recurse_shap, leaf_shap).all(), "Recurse and Leaf algorithms do not agree"
@@ -75,13 +75,13 @@ def compare_shap_taylor_implementations(X, model, black_box):
     orig_shap_taylor = explainer(X, interactions=2).values
 
     # Run the custom treeshap
-    custom_shap_taylor, _ = taylor_treeshap(model, X, X)
+    custom_shap_taylor = taylor_treeshap(model, X, X)
 
     # Make sure we output the same result
     assert np.isclose(orig_shap_taylor, custom_shap_taylor).all()
 
     # Make sure that shap_taylor sums up to shap
-    custom_shap, _ = interventional_treeshap(model, X, X)
+    custom_shap = interventional_treeshap(model, X, X)
     assert np.isclose(custom_shap_taylor.sum(-1), custom_shap).all()
 
 

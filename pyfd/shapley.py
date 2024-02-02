@@ -33,6 +33,7 @@ def permutation_shap(h, foreground, background, Imap_inv=None, M=20, show_bar=Tr
     Returns
     -------
     shapley_values : (Nf, n_features) np.ndarray
+        The interventional shapley values
     """
 
     # Setup Imap_inv
@@ -123,6 +124,7 @@ def lattice_shap(h, foreground, background, interactions, Imap_inv=None, show_ba
     Returns
     -------
     shapley_values : (Nf, n_features) np.ndarray
+        The interventional shapley values
     """
     
     assert type(interactions) == list, "interactions must be a list of tuples"
@@ -289,7 +291,7 @@ def interventional_treeshap(model, foreground, background, Imap_inv=None, anchor
     else:
         raise Exception("Invalid algorithm, pick from `recurse` or `leaf`")
 
-    return results, ensemble
+    return results
 
 
 
@@ -366,4 +368,4 @@ def taylor_treeshap(model, foreground, background, Imap_inv=None):
                                 ensemble.features, ensemble.children_left,
                                 ensemble.children_right, results)
 
-    return results, ensemble
+    return results
