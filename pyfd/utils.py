@@ -118,6 +118,48 @@ def get_Imap_inv_from_pipeline(Imap_inv, pipeline):
 
 
 
+def setup_brute_force(foreground, background, Imap_inv, interactions, show_bar):
+    d = background.shape[1]
+    if type(interactions) == int:
+        assert interactions >= 1, "interactions must be 1, 2, 3, ..."
+        assert interactions <= d, "interactions cannot be greater than the number of features"
+        def iterator_():
+            for cardinality in range(1, interactions+1):
+                for key in tqdm(combinations(range(D), r=cardinality), desc="Functional Decomposition", disable=not show_bar):
+                    yield key
+    elif type(interactions) == list:
+        assert type(interactions[0]) == tuple, "interactions should be a list of tuples"
+        interactions = sorted(interactions, key=len)
+        for i in range(len(interactions)):
+            interactions[i] = tuple(interactions[i])
+            def iterator_():
+                for key in tqdm(interactions, desc="Functional Decomposition", disable=not show_bar):
+                    yield key
+    else:
+        raise Exception("interactions must either be an integer or a list of tuples")
+    
+    # Setup Imap_inv
+    Imap_inv, D, _ = check_Imap_inv(Imap_inv, d)
+
+    # The foreground need not have the same shape as the background when one is doing a simple PDP
+    one_group = False
+    if foreground.ndim == 1:
+        foreground = foreground.reshape((-1, 1))
+    if D > 1:
+        assert foreground.shape[1] == d, "When computing several h components, foreground must be a (Nf, d) dataset"
+    elif interactions > 1:
+        assert foreground.shape[1] == d, "When computing interactions, foreground must be a (Nf, d) dataset"
+    else:
+        # The user is computing a PDP
+        if foreground.shape[1] == len(Imap_inv[0]):
+            one_group = True
+        else:
+            assert foreground.shape[1] == d, "When computing PDP, foreground must be a (Nf, d) or (Nf, group_size) dataset "
+    
+    return foreground, Imap_inv, iterator_, one_group
+
+
+
 def setup_treeshap(Imap_inv, foreground, background, model):
 
     # Map Imap_inv through the pipeline

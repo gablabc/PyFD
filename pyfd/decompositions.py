@@ -1,11 +1,10 @@
-""" Module for computing functional decompositions """
+""" Computing functional decompositions of black-box models """
 
 import ctypes
 import glob
 import numpy as np
 from tqdm import tqdm
 import os
-from itertools import combinations
 from copy import deepcopy
 
 from sklearn.linear_model import LinearRegression, Ridge, LogisticRegression, PoissonRegressor
@@ -23,6 +22,28 @@ from .utils import check_Imap_inv, get_Imap_inv_from_pipeline, get_leaf_box, rav
 SKLEARN_LINEAR = [LinearRegression, Ridge, LogisticRegression, PoissonRegressor]
 
 def get_components_linear(h, foreground, background, Imap_inv=None):
+    """
+    Compute the Interventional Decomposition of Linear Model
+
+    Parameters
+    ----------
+    h : model X -> R
+        A sklearn LinearModel or a Pipeline with a LinearModel as the last layer
+    foreground : (Nf, d) np.ndarray
+        The data points at which to evaluate the decomposition
+    background : (Nb, d) np.ndarray
+        The data points at which to anchor the decomposition
+    Imap_inv : List(List(int)), default=None
+        A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
+        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature
+    
+    Returns
+    -------
+    decomposition : dict{Tuple: np.ndarray}
+        The various components of the decomposition indexed via their feature subset e.g. `decomposition[(0,)]`
+        is a (Nf,) np.ndarray.
+    """
+
     # Setup
     Imap_inv, D, _ = check_Imap_inv(Imap_inv, background.shape[1])
     if D > 1:
@@ -64,7 +85,7 @@ def get_components_linear(h, foreground, background, Imap_inv=None):
 
     # Compute the additive components
     for j in range(D):
-        Imap_inv_j = np.array(Imap_inv[j])
+        Imap_inv_j = np.ndarray(Imap_inv[j])
         # TODO this breaks if the processed data is sparse
         decomposition[(j,)] = np.sum((foreground[:, Imap_inv_j] - background[:, Imap_inv_j].mean(0)) * w[Imap_inv_j], axis=1)
     
@@ -76,47 +97,6 @@ def get_components_linear(h, foreground, background, Imap_inv=None):
 #######################################################################################
 
 
-def setup_brute_force(foreground, background, Imap_inv, interactions, show_bar):
-    d = background.shape[1]
-    if type(interactions) == int:
-        assert interactions >= 1, "interactions must be 1, 2, 3, ..."
-        assert interactions <= d, "interactions cannot be greater than the number of features"
-        def iterator_():
-            for cardinality in range(1, interactions+1):
-                for key in tqdm(combinations(range(D), r=cardinality), desc="Functional Decomposition", disable=not show_bar):
-                    yield key
-    elif type(interactions) == list:
-        assert type(interactions[0]) == tuple, "interactions should be a list of tuples"
-        interactions = sorted(interactions, key=len)
-        for i in range(len(interactions)):
-            interactions[i] = tuple(interactions[i])
-            def iterator_():
-                for key in tqdm(interactions, desc="Functional Decomposition", disable=not show_bar):
-                    yield key
-    else:
-        raise Exception("interactions must either be an integer or a list of tuples")
-    
-    # Setup Imap_inv
-    Imap_inv, D, _ = check_Imap_inv(Imap_inv, d)
-
-    # The foreground need not have the same shape as the background when one is doing a simple PDP
-    one_group = False
-    if foreground.ndim == 1:
-        foreground = foreground.reshape((-1, 1))
-    if D > 1:
-        assert foreground.shape[1] == d, "When computing several h components, foreground must be a (Nf, d) dataset"
-    elif interactions > 1:
-        assert foreground.shape[1] == d, "When computing interactions, foreground must be a (Nf, d) dataset"
-    else:
-        # The user is computing a PDP
-        if foreground.shape[1] == len(Imap_inv[0]):
-            one_group = True
-        else:
-            assert foreground.shape[1] == d, "When computing PDP, foreground must be a (Nf, d) or (Nf, group_size) dataset "
-    
-    return foreground, Imap_inv, iterator_, one_group
-
-
 
 def get_components_brute_force(h, foreground, background, Imap_inv=None, interactions=1, anchored=True, show_bar=True):
     """
@@ -125,24 +105,26 @@ def get_components_brute_force(h, foreground, background, Imap_inv=None, interac
     Parameters
     ----------
     h : model X -> R
-    foreground : (Nf, d) `np.array`
+        A callable black box `h(X)`.
+    foreground : (Nf, d) np.ndarray
         The data points at which to evaluate the decomposition
-    background : (Nb, d) `np.array`
+    background : (Nb, d) np.ndarray
         The data points at which to anchor the decomposition
-    Imap_inv : List(List(int))
+    Imap_inv : List(List(int)), default=None
         A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
-        the columns 1 and 2 as a single feature.
+        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature
     interactions : int, List(Tuple(int)), default=1
         The highest level of interactions to consider. If it is a list of tuples, then we compute all
-        specified U components.
+        specified components in `interactions`.
     anchored : bool, default=True
         Flag to compute anchored decompositions or interventional decompositions. If anchored, a component
         is (Nf, Nb) and if interventional it is (Nf, 2) with final index indicating expectancy and std.
     
     Returns
     -------
-    decomposition : `dict{Tuple: np.array}`
+    decomposition : dict{Tuple: np.ndarray}
         The various components of the decomposition indexed via their feature subset e.g. `decomposition[(1, 2, 3)]`
+        returns the 3-way interactions between features 1, 2 and 3.
     """
     
     # Setup
@@ -186,7 +168,35 @@ def get_components_brute_force(h, foreground, background, Imap_inv=None, interac
 
 
 
-def get_components_adaptive(h, background, Imap_inv=None, show_bar=True, tolerance=0.05, precompute=None):
+def get_components_adaptive(h, background, Imap_inv=None, tolerance=0.05, show_bar=True, precompute=None):
+    """
+    Compute the Anchored/Interventional Decomposition of any black box by iteratively exploring
+    the lattice space of feature interactions.
+
+    Parameters
+    ----------
+    h : model X -> R
+        A callable black box `h(X)`.
+    background : (Nb, d) np.ndarray
+        The data points at which to anchor and evaluate the decomposition
+    Imap_inv : List(List(int)), default=None
+        A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
+        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature
+    interactions : int, List(Tuple(int)), default=1
+        The highest level of interactions to consider. If it is a list of tuples, then we compute all
+        specified components in `interactions`.
+    tolerance : float, default=0.05
+        Stop exploring the lattice space when the explained variance exceeds `1-tolerance` of the total variance.
+    precompute: dict{Tuple: np.ndarray}, default=None
+        A precomputed decomposition containing all additive terms (i.e. `decomp[(i,)]`) can be provided to
+        speed up the algorithm
+    
+    Returns
+    -------
+    decomposition : dict{Tuple: np.ndarray}
+        The various components of the decomposition indexed via their feature subset e.g. `decomposition[(1, 2, 3)]`
+        returns the 3-way interactions between features 1, 2 and 3.
+    """
     
     # Setup
     Imap_inv, D, is_fullpartition = check_Imap_inv(Imap_inv, background.shape[1])
@@ -294,25 +304,32 @@ def get_components_adaptive(h, background, Imap_inv=None, show_bar=True, toleran
 
 def get_component_tree(model, foreground, background, Imap_inv=None, anchored=False, algorithm='recurse'):
     """ 
-    Compute the Functional Components of h by via the recursive Tree algorithm
+    Compute the Anchored/Interventional Decomposition of a tree ensemble 
+    (e.g. Random Forest and Gradient Boosted Trees)
 
     Parameters
     ----------
-    model : model_object
-        The tree based machine learning model that we want to explain. XGBoost, LightGBM, CatBoost,
+    model : model X -> R
+        A tree based machine learning model that we want to explain. XGBoost, LightGBM, CatBoost,
         and most tree-based scikit-learn models are supported.
-    foreground : numpy.array or pandas.DataFrame
-        The foreground dataset is the set of all points whose prediction we wish to explain.
-    background : numpy.array or pandas.DataFrame
-        The background dataset to use for integrating out missing features in the coallitional game.
-    Imap_inv : List(List(int))
+    foreground : (Nf, d) np.ndarray
+        The data points at which to evaluate the decomposition
+    background : (Nb, d) np.ndarray
+        The data points at which to anchor the decomposition
+    Imap_inv : List(List(int)), default=None
         A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
-        the columns 1 and 2 as a single feature.
+        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature.
+    anchored : bool, default=False
+        Flag to compute anchored decompositions or interventional decompositions.
+    algorithm : string, default='recurse'
+        The algorithm used to compute the decompositions, the options are
+        - `recurse` with complexity `Nf Nb 2^min(depth, n_features)` can compute anchored and interventional
+        - `leaf` with complexity `(Nf+Nb) 2^min(depth, n_features)` can only compute interventional
 
     Returns
     -------
-    results : numpy.array
-        A (N_foreground, n_features) array if `anchored=False`, otherwise a (N_foreground, N_background, n_features)
+    results : numpy.ndarray
+        A (Nf, n_features) array if `anchored=False`, otherwise a (Nf, Nb, n_features)
         array of additive components.
     """
 
@@ -457,7 +474,29 @@ def get_component_tree(model, foreground, background, Imap_inv=None, anchored=Fa
 
 
 
-def get_PDP_PFI_importance(decomposition, show_bar=True, groups=None):
+def get_PDP_PFI_importance(decomposition, groups=None, show_bar=True):
+    """
+    Compute PDP and PFI feature importance given an anchored decomposition
+
+    Parameters
+    ----------
+    decomposition : dict{Tuple: np.ndarray}
+        An anchored decomposition with foreground=background so that `decomposition[(0,)].shape = (N, N)`
+    groups : (N,) np.ndarray, default=None
+        An array of N integers (values in {0, 1, 2, n_groups-1}) representing the group index of each datum.
+    show_bar : bool, default=True
+        Show the progress bar
+
+    Returns
+    -------
+    I_PDP : np.ndarray
+        PDP feature importance. If `groups=None` then this array is (n_features,). Otherwise it has 
+        shape (n_groups, n_features).
+    I_PFI : np.ndarray
+        PFI feature importance. If `groups=None` then this array is (n_features,). Otherwise it has 
+        shape (n_groups, n_features).
+    """
+
     # Get the additive decomposition
     keys = decomposition.keys()
     additive_keys = [key for key in keys if len(key)==1]
@@ -497,6 +536,20 @@ def get_PDP_PFI_importance(decomposition, show_bar=True, groups=None):
 
 
 def get_H_interaction(decomposition):
+    """
+    Compute the H^2 statistics measuring interaction strenght between
+    feature `i` and the remaining ones
+
+    Parameters
+    ----------
+    decomposition : dict{Tuple: np.ndarray}
+        An anchored decomposition with foreground=background so that `decomposition[(0,)].shape = (N, N)`
+
+    Returns
+    -------
+    I_H : (n_features,) np.ndarray
+        Array containing the H2 statistic for each feature
+    """
     keys = decomposition.keys()
     additive_keys = [key for key in keys if len(key)==1]
     D = len(additive_keys)
@@ -511,6 +564,24 @@ def get_H_interaction(decomposition):
 
 
 def get_h_add(decomposition, anchored=True):
+    """
+    Compute additive decomposition `h_add(x) = sum_i h_i(x)`
+    evaluated at each foreground point x
+
+    Parameters
+    ----------
+    decomposition : dict{Tuple: np.ndarray}
+        An anchored/interventional decomposition
+    anchored : bool, default=True
+        If True then the decomposition is anchored and if False the decomposition
+        is interventional
+
+    Returns
+    -------
+    h_add : np.ndarray
+        If anchored=True, this returns a (Nf, Nb) array. Otherwise, a (Nf,) array is returned
+    """
+
     keys = decomposition.keys()
     additive_keys = [key for key in keys if len(key)==1]
     h_add = 0
@@ -530,6 +601,26 @@ def get_h_add(decomposition, anchored=True):
 
 
 def get_CoE(decomposition, anchored=True, foreground_preds=None):
+    """
+    Compute Cost of Exclusion `CoE = Ex( (h(x) - h_add(x))^2 )`
+
+    Parameters
+    ----------
+    decomposition : dict{Tuple: np.ndarray}
+        An anchored/interventional decomposition
+    anchored : bool, default=True
+        If True then the decomposition is anchored and if False the decomposition
+        is interventional
+    foreground_preds : np.ndarray, default=None
+        Array containing the model predictions at all foreground data points. When set
+        to `None`, it is assumed that foreground=background and so these predictions can be 
+        extracted from `decomposition[()]`.
+    Returns
+    -------
+    coe : float
+        The cost of exclusion which measures 'Lack of Additivity'
+    """
+
     # We assume background-foreground in that case
     if foreground_preds is None:
         foreground_preds = decomposition[()]

@@ -1,3 +1,5 @@
+""" Build-in functions for loading XAI datasets """
+
 import pandas as pd
 import os
 import numpy as np
@@ -14,11 +16,26 @@ from .features import Features
 
 
 class TargetEncoder(BaseEstimator, TransformerMixin):
+    """ 
+    Encode nominal features in terms of the frequency of the target
+    conditioned on each category.
+    """
     def __init__(self):
         pass
 
     def fit(self, df):
-        """ I assume that the last column is the label """
+        """ 
+        Fit the estimator
+        
+        Parameters
+        ----------
+        df : (N, d+1) dataframe
+            A dataframe of nominal features whose last column is the label
+        
+        Returns
+        -------
+        self
+        """
         ncols = df.shape[1] - 1
         target = df.columns[-1]
         self.categories_ = [0] * ncols
@@ -33,7 +50,19 @@ class TargetEncoder(BaseEstimator, TransformerMixin):
 
 
     def transform(self, df):
-        """ I assume that the last column is the label """
+        """ 
+        Encode the provided data
+        
+        Parameters
+        ----------
+        df : (N, d+1) dataframe
+            A dataframe of nominal features whose last column is the label
+        
+        Returns
+        -------
+        X : (N, d) np.ndarray
+            Nominal features encoded as ordinal.
+        """
         ncols = df.shape[1] - 1
         X = np.zeros((df.shape[0], ncols))
         for i, feature in enumerate(df.columns[:-1]):
@@ -46,7 +75,18 @@ class TargetEncoder(BaseEstimator, TransformerMixin):
 
 
 def get_data_compas():
-    # Process data
+    """ 
+    Load the COMPAS dataset for recidivism prediction 
+    
+    Returns
+    -------
+    X : (N, d) np.ndarray
+        The input features
+    y : (N,) np.ndarray
+        The label
+    features : pyfd.features.Features
+        feature object
+    """
     
     df = pd.read_csv(os.path.join(os.path.dirname(__file__), 
                     "datasets", "COMPAS", "compas-scores-two-years.csv"))
@@ -98,6 +138,19 @@ def get_data_compas():
 
 
 def get_data_bike():
+    """ 
+    Load the BikeSharing dataset for bike rental predictions 
+    
+    Returns
+    -------
+    X : (N, d) np.ndarray
+        The input features
+    y : (N,) np.ndarray
+        The label
+    features : pyfd.features.Features
+        feature object
+    """
+    
     df = pd.read_csv(
         os.path.join(os.path.dirname(__file__), "datasets", "Bike-Sharing/hour.csv")
     )
@@ -148,7 +201,23 @@ def get_data_bike():
 
 
 def get_data_adults(use_target_encoder=False):
-
+    """ 
+    Load the Adult-Income dataset for income predictions 
+    
+    Parameters
+    ----------
+    use_target_encoder : bool, default=False
+        Encode nominal features using the TargetEncoder
+    
+    Returns
+    -------
+    X : (N, d) np.ndarray
+        The input features
+    y : (N,) np.ndarray
+        The label
+    features : pyfd.features.Features
+        feature object
+    """
     # load train
     raw_data_1 = np.genfromtxt(os.path.join(os.path.dirname(__file__), 'datasets', 
                                             'Adult-Income','adult.data'), 
@@ -244,6 +313,23 @@ def get_data_adults(use_target_encoder=False):
 
 
 def get_data_marketing(use_target_encoder=False):
+    """ 
+    Load the Marketing dataset for phone-call success predictions 
+    
+    Parameters
+    ----------
+    use_target_encoder : bool, default=False
+        Encode nominal features using the TargetEncoder
+    
+    Returns
+    -------
+    X : (N, d) np.ndarray
+        The input features
+    y : (N,) np.ndarray
+        The label
+    features : pyfd.features.Features
+        feature object
+    """
 
     # load train
     df = pd.read_csv(os.path.join(os.path.dirname(__file__),
@@ -294,6 +380,23 @@ def get_data_marketing(use_target_encoder=False):
 
 
 def get_data_credit(use_target_encoder=False):
+    """ 
+    Load the Default-Credit dataset for loan default predictions 
+    
+    Parameters
+    ----------
+    use_target_encoder : bool, default=False
+        Encode nominal features using the TargetEncoder
+    
+    Returns
+    -------
+    X : (N, d) np.ndarray
+        The input features
+    y : (N,) np.ndarray
+        The label
+    features : pyfd.features.Features
+        feature object
+    """
 
     # load train
     df = pd.read_csv(os.path.join(os.path.dirname(__file__),
@@ -351,6 +454,18 @@ def get_data_credit(use_target_encoder=False):
 
 
 def get_data_kin8nm():
+    """ 
+    Load the Kin8nm dataset for robot-arm dynamics predictions 
+    
+    Returns
+    -------
+    X : (N, d) np.ndarray
+        The input features
+    y : (N,) np.ndarray
+        The label
+    features : pyfd.features.Features
+        feature object
+    """
 
     # load train
     df = pd.read_csv(os.path.join(os.path.dirname(__file__),
@@ -370,6 +485,19 @@ def get_data_kin8nm():
 
 
 def get_data_california_housing():
+    """ 
+    Load the California dataset for house pricing predictions 
+    
+    Returns
+    -------
+    X : (N, d) np.ndarray
+        The input features
+    y : (N,) np.ndarray
+        The label
+    features : pyfd.features.Features
+        feature object
+    """
+
     data = fetch_california_housing()
 
     X, y, feature_names = data["data"], data["target"], data["feature_names"]
@@ -420,6 +548,27 @@ def get_data_california_housing():
 
 
 def get_data_kaggle_housing(remove_correlations=False, submission=False):
+    """ 
+    Load the Kaggle-Houses dataset for house pricing predictions 
+    
+    Parameters
+    ----------
+    remove_correlations : bool, default=False
+        Remove correlated features from the dataset
+
+    subsmission : bool, default=False
+        Load the test data (without labels) to submit on kaggle
+    
+    Returns
+    -------
+    X : (N, d) np.ndarray
+        The input features
+    y : (N,) np.ndarray
+        The label
+    features : pyfd.features.Features
+        feature object
+    """
+
     # https://www.kaggle.com/c/house-prices-advanced-regression-techniques/data?select=train.csv
     
     if submission:

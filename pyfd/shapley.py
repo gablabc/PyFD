@@ -21,17 +21,18 @@ def permutation_shap(h, foreground, background, Imap_inv=None, M=20, show_bar=Tr
     Parameters
     ----------
     h : model X -> R
-    foreground : (Nf, d) `np.array`
+        A callable black box `h(X)`.
+    foreground : (Nf, d) np.ndarray
         The data points at which to evaluate the decomposition
-    background : (Nb, d) `np.array`
+    background : (Nb, d) np.ndarray
         The data points at which to anchor the decomposition
-    Imap_inv : List(List(int))
+    Imap_inv : List(List(int)), default=None
         A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
-        the columns 1 and 2 as a single feature.
+        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature
     
     Returns
     -------
-    shapley_values : (Nf, n_features) `np.array`
+    shapley_values : (Nf, n_features) np.ndarray
     """
 
     # Setup Imap_inv
@@ -108,19 +109,20 @@ def lattice_shap(h, foreground, background, interactions, Imap_inv=None, show_ba
     Parameters
     ----------
     h : model X -> R
-    foreground : (Nf, d) `np.array`
+        A callable black box `h(X)`.
+    foreground : (Nf, d) np.ndarray
         The data points at which to evaluate the decomposition
-    background : (Nb, d) `np.array`
+    background : (Nb, d) np.ndarray
         The data points at which to anchor the decomposition
     interactions : List(Tuple(int))
         List of tuples representing the lattice space.
-    Imap_inv : List(List(int))
+    Imap_inv : List(List(int)), default=None
         A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
-        the columns 1 and 2 as a single feature.
+        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature
     
     Returns
     -------
-    shapley_values : (Nf, n_features) `np.array`
+    shapley_values : (Nf, n_features) np.ndarray
     """
     
     assert type(interactions) == list, "interactions must be a list of tuples"
@@ -176,22 +178,28 @@ def interventional_treeshap(model, foreground, background, Imap_inv=None, anchor
 
     Parameters
     ----------
-    model : model_object
-        The tree based machine learning model that we want to explain. XGBoost, LightGBM, CatBoost,
+    model : model X -> R
+        A tree based machine learning model that we want to explain. XGBoost, LightGBM, CatBoost,
         and most tree-based scikit-learn models are supported.
-    foreground : numpy.array or pandas.DataFrame
-        The foreground dataset is the set of all points whose prediction we wish to explain.
-    background : numpy.array or pandas.DataFrame
-        The background dataset to use for integrating out missing features in the coallitional game.
-    Imap_inv : List(List(int))
+    foreground : (Nf, d) np.ndarray
+        The data points at which to evaluate the decomposition
+    background : (Nb, d) np.ndarray
+        The data points at which to anchor the decomposition
+    Imap_inv : List(List(int)), default=None
         A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
-        the columns 1 and 2 as a single feature.
+        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature.
+    anchored : bool, default=False
+        Flag to compute anchored shapley values or interventional shapley values.
+    algorithm : string, default='recurse'
+        The algorithm used to compute the shapley values, the options are
+        - `recurse` with complexity `Nf Nb 2^min(depth, n_features)` can compute anchored and interventional
+        - `leaf` with complexity `(Nf+Nb) 2^min(depth, n_features)` can only compute interventional
 
     Returns
     -------
-    results : numpy.array
-        A (N_foreground, n_features) array if `anchored=False`, otherwise a (N_foreground, N_background, n_features)
-        array of anchored SHAP values.
+    results : np.ndarray
+        A (Nf n_features) array of interventional SHAP values if `anchored=False`. 
+        Otherwise a (Nf, Nb, n_features) array of anchored SHAP values.
     """
 
     sym = id(foreground) == id(background)
@@ -296,17 +304,17 @@ def taylor_treeshap(model, foreground, background, Imap_inv=None):
     model : model_object
         The tree based machine learning model that we want to explain. XGBoost, LightGBM, CatBoost,
         and most tree-based scikit-learn models are supported.
-    foreground : numpy.array or pandas.DataFrame
+    foreground : np.ndarray or pandas.DataFrame
         The foreground dataset is the set of all points whose prediction we wish to explain.
-    background : numpy.array or pandas.DataFrame
+    background : np.ndarray or pandas.DataFrame
         The background dataset to use for integrating out missing features in the coallitional game.
     Imap_inv : List(List(int))
         A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
-        the columns 1 and 2 as a single feature.
+        the columns 0 and 1 as a single feature.
 
     Returns
     -------
-    results : numpy.array
+    results : np.ndarray
         A (N_foreground, n_features, n_features) array
     """
 
