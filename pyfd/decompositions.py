@@ -10,7 +10,8 @@ from copy import deepcopy
 from sklearn.linear_model import LinearRegression, Ridge, LogisticRegression, PoissonRegressor
 from sklearn.pipeline import Pipeline
 
-from .utils import check_Imap_inv, get_Imap_inv_from_pipeline, get_leaf_box, ravel, powerset, setup_treeshap
+from .utils import check_Imap_inv, get_Imap_inv_from_pipeline, get_leaf_box
+from .utils import ravel, powerset, setup_brute_force, setup_treeshap
 
 
 
@@ -85,7 +86,7 @@ def get_components_linear(h, foreground, background, Imap_inv=None):
 
     # Compute the additive components
     for j in range(D):
-        Imap_inv_j = np.ndarray(Imap_inv[j])
+        Imap_inv_j = np.array(Imap_inv[j])
         # TODO this breaks if the processed data is sparse
         decomposition[(j,)] = np.sum((foreground[:, Imap_inv_j] - background[:, Imap_inv_j].mean(0)) * w[Imap_inv_j], axis=1)
     

@@ -5,7 +5,8 @@ import numpy as np
 import shap
 from shap.maskers import Independent
 
-from pyfd.decompositions import get_components_brute_force, get_components_adaptive, lattice_shap
+from pyfd.decompositions import get_components_brute_force, get_components_adaptive
+from pyfd.shapley import lattice_shap
 
 
 def generate_problem(N):
