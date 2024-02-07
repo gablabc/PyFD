@@ -248,21 +248,112 @@ class FDTree(BaseEstimator, ABC):
             return nodes_per_branch[best_branch], subobjective_per_branch[best_branch], n_leaves_per_branch[best_branch]
 
 
-    def predict(self, X_new, latex_rules=False):
-        """ Return the group index and the corresponding rules """
+    def predict(self, X_new):
+        """ Return the group index of each instance """
         groups = np.zeros(X_new.shape[0], dtype=np.int)
         self.group_idx = 0
         if self.n_groups == 1:
-            return groups, ["all"]
+            return groups
+        else:
+            self._tree_traversal_predict(self.root, np.arange(X_new.shape[0]), X_new, groups)
+            return groups
+
+
+    def _tree_traversal_predict(self, node, instances_idx, X_new, groups):
+        
+        if node.child_left is None:
+            # Label the instances at the leaf
+            groups[instances_idx] = self.group_idx
+            self.group_idx += 1
+        else:
+            x_i = X_new[instances_idx, node.feature]
+            # Go left
+            self._tree_traversal_predict(node.child_left, 
+                                         instances_idx[x_i <= node.threshold],
+                                         X_new, groups)
+            
+            # Go right
+            self._tree_traversal_predict(node.child_right, 
+                                         instances_idx[x_i > node.threshold],
+                                         X_new, groups)
+
+
+    def rules(self, use_latex=False):
+        """ Return the rule for each leaf """
+        self.group_idx = 0
+        if self.n_groups == 1:
+            return "all"
         else:
             rules = {}
             curr_rule = []
-            self._tree_traversal(self.root, np.arange(X_new.shape[0]), X_new, groups, 
-                                rules, curr_rule, latex_rules)
-            return groups, rules
+            self._tree_traversal_rules(self.root, rules, curr_rule, use_latex)
+            return rules
 
 
-    def postprocess_rules(self, curr_rule, latex_rules):
+    def _tree_traversal_rules(self, node, rules, curr_rule, use_latex):
+        
+        if node.child_left is None:
+            if len(curr_rule) > 1:
+                # Simplify long rule lists if possible
+                curr_rule_copy = self.postprocess_rules(curr_rule, use_latex)
+                if len(curr_rule_copy) > 1:
+                    rules[self.group_idx] = "(" + SYMBOLS[use_latex]["and_str"].join(curr_rule_copy) + ")"
+                else:
+                    rules[self.group_idx] = curr_rule_copy[0]
+            else:
+                rules[self.group_idx] = curr_rule[0]
+            self.group_idx += 1
+        else:
+
+            feature_name = self.features.names_[node.feature]
+            feature_type = self.features.types[node.feature]
+
+            # Boolean
+            if feature_type == "bool":
+                assert np.isclose(node.threshold, 0)
+                curr_rule.append(f"not {feature_name}")
+            # Ordinal
+            elif feature_type == "ordinal":
+                categories = np.array(self.features.maps_[node.feature].cats)
+                cats_left = categories[:int(node.threshold)+1]
+                if len(cats_left) == 1:
+                    curr_rule.append(f"{feature_name}={cats_left[0]}")
+                else:
+                    curr_rule.append(f"{feature_name} " + SYMBOLS[use_latex]['in_set'] \
+                                     + " [" + ",".join(cats_left)+"]")
+            # Numerical
+            else:
+                curr_rule.append(feature_name + SYMBOLS[use_latex]['leq'] +\
+                                f"{node.threshold:.2f}")
+            
+
+            # Go left
+            self._tree_traversal_rules(node.child_left, rules, curr_rule, use_latex)
+            curr_rule.pop()
+
+
+            # Boolean
+            if feature_type == "bool":
+                curr_rule.append(f"{feature_name}")
+            # Ordinal
+            elif feature_type == "ordinal":
+                cats_right = categories[int(node.threshold)+1:]
+                if len(cats_right) == 1:
+                    curr_rule.append(f"{feature_name}={cats_right[0]}")
+                else:
+                    curr_rule.append(f"{feature_name} " + SYMBOLS[use_latex]['in_set'] \
+                                     + " [" + ",".join(cats_right)+"]")
+            # Numerical
+            else:
+                curr_rule.append(feature_name + SYMBOLS[use_latex]['up'] +\
+                                f"{node.threshold:.2f}")
+            
+            # Go right
+            self._tree_traversal_rules(node.child_right, rules, curr_rule, use_latex)
+            curr_rule.pop()
+
+
+    def postprocess_rules(self, curr_rule, use_latex):
         """ 
         Simplify numerical rules
         - Remove redundancy x1>3 and x1>5 becomes x1>5
@@ -270,7 +361,7 @@ class FDTree(BaseEstimator, ABC):
         """
         
         curr_rule_copy = deepcopy(curr_rule)
-        separators = [SYMBOLS[latex_rules]["leq"], SYMBOLS[latex_rules]["up"]]
+        separators = [SYMBOLS[use_latex]["leq"], SYMBOLS[use_latex]["up"]]
         select_rules_0 = [rule for rule in curr_rule_copy if separators[0] in rule]
         splits_0 = [rule.split(separators[0])+[0] for rule in select_rules_0]
         select_rules_1 = [rule for rule in curr_rule_copy if separators[1] in rule]
@@ -307,88 +398,16 @@ class FDTree(BaseEstimator, ABC):
                             threshold_right = threshold
                     # print the new rule
                     if threshold_right is None:
-                        new_rule = select_feature+SYMBOLS[latex_rules]["leq"]+threshold_left
+                        new_rule = select_feature+SYMBOLS[use_latex]["leq"]+threshold_left
                     elif threshold_left is None:
-                        new_rule = select_feature+SYMBOLS[latex_rules]["up"]+threshold_right
+                        new_rule = select_feature+SYMBOLS[use_latex]["up"]+threshold_right
                     else:
-                        new_rule = threshold_right + SYMBOLS[latex_rules]["low"] +\
-                            select_feature + SYMBOLS[latex_rules]["leq"] + threshold_left
+                        new_rule = threshold_right + SYMBOLS[use_latex]["low"] +\
+                            select_feature + SYMBOLS[use_latex]["leq"] + threshold_left
                     # Add the new rule
                     curr_rule_copy.append(new_rule)
 
         return curr_rule_copy
-
-
-    def _tree_traversal(self, node, instances_idx, X_new, groups, 
-                                    rules, curr_rule, latex_rules):
-        
-        if node.child_left is None:
-            # Label the instances at the leaf
-            groups[instances_idx] = self.group_idx
-            if len(curr_rule) > 1:
-                # Simplify long rule lists if possible
-                curr_rule_copy = self.postprocess_rules(curr_rule, latex_rules)
-                if len(curr_rule_copy) > 1:
-                    rules[self.group_idx] = "(" + SYMBOLS[latex_rules]["and_str"].join(curr_rule_copy) + ")"
-                else:
-                    rules[self.group_idx] = curr_rule_copy[0]
-            else:
-                rules[self.group_idx] = curr_rule[0]
-            self.group_idx += 1
-        else:
-            x_i = X_new[instances_idx, node.feature]
-
-            feature_name = self.features.names_[node.feature]
-            feature_type = self.features.types[node.feature]
-
-            # Boolean
-            if feature_type == "bool":
-                assert np.isclose(node.threshold, 0)
-                curr_rule.append(f"not {feature_name}")
-            # Ordinal
-            elif feature_type == "ordinal":
-                categories = np.array(self.features.maps_[node.feature].cats)
-                cats_left = categories[:int(node.threshold)+1]
-                if len(cats_left) == 1:
-                    curr_rule.append(f"{feature_name}={cats_left[0]}")
-                else:
-                    curr_rule.append(f"{feature_name} " + SYMBOLS[latex_rules]['in_set'] \
-                                     + " [" + ",".join(cats_left)+"]")
-            # Numerical
-            else:
-                curr_rule.append(feature_name + SYMBOLS[latex_rules]['leq'] +\
-                                f"{node.threshold:.2f}")
-            
-
-            # Go left
-            self._tree_traversal(node.child_left, 
-                                 instances_idx[x_i <= node.threshold],
-                                 X_new, groups, rules, curr_rule, latex_rules)
-            curr_rule.pop()
-
-
-            # Boolean
-            if feature_type == "bool":
-                curr_rule.append(f"{feature_name}")
-            # Ordinal
-            elif feature_type == "ordinal":
-                cats_right = categories[int(node.threshold)+1:]
-                if len(cats_right) == 1:
-                    curr_rule.append(f"{feature_name}={cats_right[0]}")
-                else:
-                    curr_rule.append(f"{feature_name} " + SYMBOLS[latex_rules]['in_set'] \
-                                     + " [" + ",".join(cats_right)+"]")
-            # Numerical
-            else:
-                curr_rule.append(feature_name + SYMBOLS[latex_rules]['up'] +\
-                                f"{node.threshold:.2f}")
-            
-            # Go right
-            self._tree_traversal(node.child_right, 
-                                 instances_idx[x_i > node.threshold],
-                                 X_new, groups, rules, curr_rule, latex_rules)
-            curr_rule.pop()
-
 
 
 class CoE_Tree(FDTree):

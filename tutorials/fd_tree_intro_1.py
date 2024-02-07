@@ -41,7 +41,6 @@ y = h(X)
 # %%
 # Run SHAP on whole dataset
 background = X
-mu = h(background).mean()
 masker = Independent(background, max_samples=background.shape[0])
 explainer = shap.explainers.Exact(h, masker)
 phis = explainer(background).values
@@ -57,12 +56,12 @@ attrib_scatter_plot(decomposition, phis, X, features)
 plt.show()
 
 # %% [markdown]
-# In this plot, the lines are the additve decomposition while the
+# In this plot, the lines are the additive decomposition while the
 # points are the SHAP values. We observe strong disagreements between the additive 
 # decomposition and SHAP. This disagreement also translates to the PDP/SHAP/PFI
 # global feature importance.
 # %%
-# # Global feature importance
+# Global feature importance
 I_PDP, I_PFI, _ = get_PDP_PFI_importance(decomposition)
 I_SHAP = (phis**2).mean(axis=0)
 bar([I_PFI, I_SHAP, I_PDP], features.print_names())
@@ -113,14 +112,15 @@ plt.show()
 # %% [markdown]
 # Once a FDTree is fitted, it can be used to partition
 # the data samples into groups. The method `.predict()` 
-# returns the group index for each datum and an interpretable
-# representation of the regions.
+# returns the group index for each datum. Moreover, the `.rules()`
+# method returns an interpretable representation of the regions.
 # %%
-groups, rules = tree.predict(X, latex_rules=False)
+groups = tree.predict(X)
+rules = tree.rules(use_latex=False)
 print(rules)
 
 # We rerun .predict() to return latex formated rules
-groups, rules = tree.predict(X, latex_rules=True)
+rules = tree.rules(use_latex=True)
 
 # %% [markdown]
 # Given these regions, instead of using the whole dataset
