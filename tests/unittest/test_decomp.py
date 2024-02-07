@@ -57,7 +57,7 @@ def test_brute_force_IO():
     for i in range(5):
         decomp = get_components_brute_force(h, x_lin, X, Imap_inv=[[i]], anchored=False)
         assert len(decomp.keys()) == 2, "PDP failed"
-        assert decomp[()].shape == (2,), "PDP failed"
+        assert decomp[()].shape == (N,), "PDP failed"
         assert decomp[(0,)].shape == (100, 2), "PDP failed"
 
     # test up to pair-wise interactions among all features
@@ -86,7 +86,7 @@ def test_brute_force_IO():
     grid = np.column_stack((xx.ravel(), yy.ravel()))
     decomp = get_components_brute_force(h, grid, X, Imap_inv=[[0, 1]], anchored=False)
     assert len(decomp.keys()) == 2, "Grouped PDP failed"
-    assert decomp[()].shape == (2,), "Grouped PDP failed"
+    assert decomp[()].shape == (N,), "Grouped PDP failed"
     assert decomp[(0,)].shape == (100, 2), "Grouped PDP failed"
 
     # Grouped features
