@@ -195,20 +195,22 @@ def bar(phis, feature_labels, threshold=None, xerr=None, absolute=False, ax=None
 
 
 
-def partial_dependence_plot(decomposition, foreground, background, features, Imap_inv, normalize_y=True, grouping=None, 
-                            figsize=(24, 10), n_cols=5, plot_hist=False, fd_trees_kwargs={}):
-    Imap_inv = deepcopy(Imap_inv)
+def partial_dependence_plot(decomposition, foreground, background, features,
+                            groups_method=None, rules=None, fd_trees_kwargs={}, centered=True,
+                            figsize=(24, 10), n_cols=5, plot_hist=False, normalize_y=True):
+    
+    Imap_inv = deepcopy(features.Imap_inv)
     for i in range(len(Imap_inv)):
         assert len(Imap_inv[i]) == 1, "No feature grouping in PDP plots"
         Imap_inv[i] = Imap_inv[i][0]
     
-    anchored = decomposition[()].shape == (foreground.shape[0],)
+    anchored = decomposition[(0,)].shape == (foreground.shape[0], background.shape[0])
     additive_keys = [key for key in decomposition.keys() if len(key)==1]
     d = len(additive_keys)
 
     if anchored:
-        y_min = min([np.percentile(decomposition[key], 5) for key in additive_keys])
-        y_max = max([np.percentile(decomposition[key], 95) for key in additive_keys])
+        y_min = min([np.percentile(decomposition[key], 1) for key in additive_keys])
+        y_max = max([np.percentile(decomposition[key], 99) for key in additive_keys])
         importance = np.array([np.mean(decomposition[key].mean(0)**2) for key in additive_keys])
     else:
         y_min = min([decomposition[key].min() for key in additive_keys])
@@ -220,10 +222,14 @@ def partial_dependence_plot(decomposition, foreground, background, features, Ima
     y_min = y_min - delta_y*0.01
     y_max = y_max + delta_y*0.01
 
-    n_rows = ceil(d / n_cols)
+    if len(order) < n_cols:
+        n_cols = len(order)
+        n_rows = 1
+    else:
+        n_rows = ceil(d / n_cols)
     _, ax = plt.subplots(n_rows, n_cols, figsize=figsize)
     for iter, idx in enumerate(order):
-        curr_ax = ax[iter//n_cols][iter%n_cols]
+        curr_ax = ax[iter] if n_rows == 1 else ax[iter//n_cols][iter%n_cols]
 
         # Key represents the name of the component
         key = additive_keys[idx]
@@ -244,39 +250,57 @@ def partial_dependence_plot(decomposition, foreground, background, features, Ima
             curr_ax.plot(foreground[sorted_idx, column], decomposition[key][sorted_idx], 'k-')
         else:
             plot_legend = False
-            if grouping is None:
+            if groups_method is None:
+                colors = ['k']
+                rules = "all"
                 n_groups = 1
-                groups = np.zeros(foreground.shape[1])
-            elif isinstance(grouping, np.ndarray):
-                if grouping is None:
-                    n_groups = 1
-                    groups = np.zeros(foreground.shape[1])
-            elif grouping in ["gadget-pdp", "pdp-pfi"]:
+                groups_foreground = np.zeros(foreground.shape[0])
+                groups_background = np.zeros(background.shape[0])
+            elif callable(groups_method):
+                colors = COLORS
                 plot_legend = True
-                assert id(foreground) ==  id(background) ,"grouping requires background=foreground"
+                assert rules is not None, "When providing groups you must also provide their rule description"
+                n_groups = len(rules)
+                groups_foreground = groups_method(foreground)
+                groups_background = groups_method(background)
+            elif groups_method in ["gadget-pdp", "pdp-pfi"]:
+                colors = COLORS
+                plot_legend = True
+                assert id(foreground) ==  id(background) ,"FDTrees requires background=foreground"
                 # Fit a FDTree to reduce interactions involving the feature `column`
                 decomp_copy = {}
                 decomp_copy[()] = decomposition[()]
-                decomp_copy[(1,)] = decomposition[key]
+                decomp_copy[(0,)] = decomposition[key]
                 background_slice = np.delete(background, column, axis=1)
                 features_slice = features.remove([column])
-                fd_tree = GADGET_PDP(features=features_slice, **fd_trees_kwargs) if grouping == "gadget-pdp" \
-                            else  PDP_PFI_Tree(features=features_slice, **fd_trees_kwargs) 
+                fd_tree = GADGET_PDP(features=features_slice, **fd_trees_kwargs) if groups_method == "gadget-pdp" \
+                    else  PDP_PFI_Tree(features=features_slice, **fd_trees_kwargs) 
                 fd_tree.fit(background_slice, decomp_copy)
-                groups, rules = fd_tree.predict(background_slice, latex_rules=True)
+                rules = fd_tree.rules(latex_rules=True)
+                groups_foreground = fd_tree.predict(foreground)
+                groups_background = fd_tree.predict(background)
                 n_groups = fd_tree.n_groups
             else:
                 raise Exception("Invalid grouping parameter")
 
             # For each group plot the anchored components in color
             for group_id in range(n_groups):
-                group_foreground = foreground[groups==group_id]
+                group_foreground = foreground[groups_foreground==group_id]
                 sorted_idx = np.argsort(group_foreground[:, column])
-                select = np.where(groups==group_id)[0][sorted_idx].reshape((-1, 1))
-                H = decomposition[key][select, select.T]
-                # group_ice += mu[groups==group_id].mean()
-                curr_ax.plot(group_foreground[sorted_idx, column], H, COLORS[group_id], alpha=0.01)
-                curr_ax.plot(group_foreground[sorted_idx, column], H.mean(1), COLORS[group_id], label=rules[group_id])
+                select_f = np.where(groups_foreground==group_id)[0][sorted_idx].reshape((-1, 1))
+                select_b = np.where(groups_background==group_id)[0].reshape((-1, 1))
+                H = decomposition[key][select_f, select_b.T]
+                # Center the curves w.r.t the xaxis
+                if centered:
+                    H = H - H.mean(0)
+                # Otherwise show the pdp/ice plus intercept
+                else:
+                    H += decomposition[()][select_b.ravel()]
+                x = group_foreground[sorted_idx, column]
+                curr_ax.plot(x, H, colors[group_id], alpha=0.01)
+                curr_ax.plot(x, H.mean(1), 'k', linewidth=3)
+                if n_groups > 1:
+                    curr_ax.plot(x, H.mean(1), colors[group_id], label=rules[group_id], linewidth=2)
         
             if plot_legend:
                 curr_ax.legend(fontsize=12, framealpha=1)

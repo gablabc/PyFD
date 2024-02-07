@@ -124,7 +124,7 @@ plt.show()
 
 # %% [markdown]
 # These basis could be used as a new feature matrix that can be send to a linear model
-# e.g. `linear_model.fit(H_, y)`. However, this introduces an issue of overparametrization. 
+# e.g. `linear_model.fit(H, y)`. However, this introduces an issue of overparametrization. 
 # Indeed, the splines sum up to 1 at each $x$ and so the bias term $\omega_0$ is redundant. We have two options:
 # - Ignore the bias term in the regression. This will not be sufficient when there are various input features
 # - Remove one of the splines.

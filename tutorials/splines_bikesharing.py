@@ -78,10 +78,10 @@ plt.show()
 # Pickle the model
 dump(model, os.path.join("models", "bike_splines.joblib"))
 
-# %% [markdown]
-# Here we load the model. On subsequent reruns of the script,
-# you do not need to retrain the model and can simply start by running
-# this cell.
+# # %% [markdown]
+# # Here we load the model. On subsequent reruns of the script,
+# # you do not need to retrain the model and can simply start by running
+# # this cell.
 # %%
 # Load the model
 model = load(os.path.join("models", "bike_splines.joblib"))
@@ -99,8 +99,8 @@ background = X
 components = get_components_linear(model, foreground, background)
 
 # %%
-partial_dependence_plot(components, foreground, background, features, Imap_inv=features.Imap_inv, plot_hist=True, 
-                        n_cols=5, figsize=(30, 15))
+partial_dependence_plot(components, foreground, background, features, 
+                        plot_hist=True, n_cols=5, figsize=(30, 15))
 plt.show()
 
 # %% [markdown]

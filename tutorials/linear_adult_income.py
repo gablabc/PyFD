@@ -82,13 +82,13 @@ print(model.score(X_test, y_test))
 # **Partial Dependence Plots**.
 # %%
 
-foreground = X_test[:500]
-background = X_train[:1000]
+foreground = X_test
+background = X_train
 components = get_components_linear(model, foreground, background)
 
 # %%
-partial_dependence_plot(components, foreground, background, features, Imap_inv=features.Imap_inv, plot_hist=True, 
-                        n_cols=6, figsize=(30, 15))
+partial_dependence_plot(components, foreground, background, features, 
+                        plot_hist=True, n_cols=6, figsize=(30, 15))
 plt.show()
 
 # %% [markdown]
@@ -139,3 +139,5 @@ bar(FI, features_names)
 plt.show()
 top_k = np.argsort(-FI)[:5]
 print(f"Top 5 features {[features_names[i] for i in top_k]}")
+
+# %%
