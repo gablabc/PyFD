@@ -303,7 +303,7 @@ def get_components_adaptive(h, background, Imap_inv=None, tolerance=0.05, show_b
 
 
 
-def get_component_tree(model, foreground, background, Imap_inv=None, anchored=False, algorithm='recurse'):
+def get_components_tree(model, foreground, background, Imap_inv=None, anchored=False, algorithm='recurse'):
     """ 
     Compute the Anchored/Interventional Decomposition of a tree ensemble 
     (e.g. Random Forest and Gradient Boosted Trees)

@@ -3,7 +3,7 @@
 import pytest
 import numpy as np
 
-from pyfd.decompositions import get_components_brute_force, get_component_tree
+from pyfd.decompositions import get_components_brute_force, get_components_tree
 
 from utils import setup_toy, setup_adult, setup_bike, setup_california, setup_compas
 
@@ -17,7 +17,7 @@ def compare_recursive_brute(X, model, black_box, sym=False, Imap_inv=None):
         X = background
 
     # Run the tree decomp (non-anchored)
-    tree_decomp = get_component_tree(model, X, background, anchored=False, Imap_inv=Imap_inv)
+    tree_decomp = get_components_tree(model, X, background, anchored=False, Imap_inv=Imap_inv)
     
     # Run the brute force method (non-anchored)
     brute_decomp = get_components_brute_force(black_box, X, background, anchored=False, Imap_inv=Imap_inv)
@@ -28,7 +28,7 @@ def compare_recursive_brute(X, model, black_box, sym=False, Imap_inv=None):
     
 
     # Run the tree decomp (anchored)
-    tree_decomp = get_component_tree(model, X, background, anchored=True, Imap_inv=Imap_inv)
+    tree_decomp = get_components_tree(model, X, background, anchored=True, Imap_inv=Imap_inv)
 
     # Run the brute force method (anchored)
     brute_decomp = get_components_brute_force(black_box, X, background, anchored=True, Imap_inv=Imap_inv)
@@ -44,8 +44,8 @@ def compare_recursive_leaf(X, model, Imap_inv=None):
         X = X[:500]
     background = X[:100]
 
-    recurse_decomp = get_component_tree(model, X, background, Imap_inv=Imap_inv)
-    leaf_decomp = get_component_tree(model, X, background, Imap_inv=Imap_inv, algorithm="leaf")
+    recurse_decomp = get_components_tree(model, X, background, Imap_inv=Imap_inv)
+    leaf_decomp = get_components_tree(model, X, background, Imap_inv=Imap_inv, algorithm="leaf")
 
     # Make sure we output the same result
     for key in recurse_decomp.keys():
