@@ -235,7 +235,7 @@ def get_components_adaptive(h, background, Imap_inv=None, tolerance=0.05, show_b
     h_proj = get_h_add(decomposition, anchored=True).mean(1)
     loss = np.mean( ( decomposition[()] - h_proj ) ** 2)
     # We get the interaction strenght for each of the current subsets u\in U
-    psi, U = get_H_interaction(decomposition)
+    psi, U = get_H_interaction(decomposition, return_keys=True)
     # Data structure counting how many times we saw each super set
     seen_super_sets = {}
     # Store the decomposition without necessarily adding it to the dict
@@ -474,7 +474,7 @@ def get_components_tree(model, foreground, background, Imap_inv=None, anchored=F
 
 
 
-def get_PDP_PFI_importance(decomposition, groups=None, show_bar=False):
+def get_PDP_PFI_importance(decomposition, groups=None, return_keys=False, show_bar=False):
     """
     Compute PDP and PFI feature importance given an anchored decomposition
 
@@ -484,6 +484,8 @@ def get_PDP_PFI_importance(decomposition, groups=None, show_bar=False):
         An anchored decomposition with foreground=background so that `decomposition[(0,)].shape = (N, N)`
     groups : (N,) np.ndarray, default=None
         An array of N integers (values in {0, 1, 2, n_groups-1}) representing the group index of each datum.
+    return_keys : bool, default=False
+        whether or not to return the additive keys associated with each interaction index
     show_bar : bool, default=True
         Show the progress bar
 
@@ -495,6 +497,8 @@ def get_PDP_PFI_importance(decomposition, groups=None, show_bar=False):
     I_PFI : np.ndarray
         PFI feature importance. If `groups=None` then this array is (n_features,). Otherwise it has 
         shape (n_groups, n_features).
+    additive_keys : List(List(int))
+        The key associated with each feature importance.
     """
 
     # Get the additive decomposition
@@ -521,7 +525,6 @@ def get_PDP_PFI_importance(decomposition, groups=None, show_bar=False):
         for d in tqdm(range(D), desc="PDP/PFI Importance", disable=not show_bar):
             I_PDP[d] = np.mean(decomposition[additive_keys[d]].mean(1)**2)
             I_PFI[d] = np.mean(decomposition[additive_keys[d]].mean(0)**2)
-        return I_PDP, I_PFI, additive_keys
     # Separate feature importance for each group
     else:
         I_PDP = np.zeros((n_groups, D))
@@ -532,11 +535,13 @@ def get_PDP_PFI_importance(decomposition, groups=None, show_bar=False):
                 H = decomposition[additive_keys[d]][select, select.T]
                 I_PDP[group_id, d] = np.mean(H.mean(1)**2)
                 I_PFI[group_id, d] = np.mean(H.mean(0)**2)
+    
+    if return_keys:
         return I_PDP, I_PFI, additive_keys
+    return I_PDP, I_PFI
 
 
-
-def get_H_interaction(decomposition):
+def get_H_interaction(decomposition, return_keys=False):
     """
     Compute the H^2 statistics measuring interaction strenght between
     feature `i` and the remaining ones
@@ -545,11 +550,15 @@ def get_H_interaction(decomposition):
     ----------
     decomposition : dict{Tuple: np.ndarray}
         An anchored decomposition with foreground=background so that `decomposition[(0,)].shape = (N, N)`
-
+    return_keys : bool, default=False
+        whether or not to return the additive keys associated with each interaction index
+    
     Returns
     -------
     I_H : (n_features,) np.ndarray
         Array containing the H2 statistic for each feature
+    additive_keys : List(List(int))
+        The key associated with each interaction index.
     """
     keys = decomposition.keys()
     additive_keys = [key for key in keys if len(key)==1]
@@ -562,7 +571,9 @@ def get_H_interaction(decomposition):
     for d in range(D):
         I_H[d]  = np.mean((decomposition[additive_keys[d]].mean(0) + \
                             decomposition[additive_keys[d]].mean(1))**2)
-    return I_H, additive_keys
+    if return_keys:
+        return I_H, additive_keys
+    return I_H
 
 
 

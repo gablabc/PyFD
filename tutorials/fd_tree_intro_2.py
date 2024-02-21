@@ -70,7 +70,7 @@ plt.show()
 # global feature importance.
 # %%
 # # Global feature importance
-I_PDP, I_PFI, _ = get_PDP_PFI_importance(decomposition)
+I_PDP, I_PFI  = get_PDP_PFI_importance(decomposition)
 I_SHAP = (phis**2).mean(axis=0)
 bar([I_PFI, I_SHAP, I_PDP], features.print_names())
 plt.yticks(fontsize=35)
@@ -128,7 +128,7 @@ rules = tree.rules(use_latex=True)
 # `groups` to `get_PDP_PFI_importance`.
 # %%
 # Global Feature Importance
-I_PDP, I_PFI, _ = get_PDP_PFI_importance(decomposition, groups=groups)
+I_PDP, I_PFI  = get_PDP_PFI_importance(decomposition, groups=groups)
 
 # %% [markdown]
 # Shapley values must be computed by calling SHAP various times.
