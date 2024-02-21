@@ -272,14 +272,17 @@ def partial_dependence_plot(decomposition, foreground, background, features,
                 decomp_copy[()] = decomposition[()]
                 decomp_copy[(0,)] = decomposition[key]
                 background_slice = np.delete(background, column, axis=1)
+                foreground_slice = np.delete(foreground, column, axis=1)
                 features_slice = features.remove([column])
                 fd_tree = GADGET_PDP(features=features_slice, **fd_trees_kwargs) if groups_method == "gadget-pdp" \
                     else  PDP_PFI_Tree(features=features_slice, **fd_trees_kwargs) 
                 fd_tree.fit(background_slice, decomp_copy)
-                rules = fd_tree.rules(latex_rules=True)
-                groups_foreground = fd_tree.predict(foreground)
-                groups_background = fd_tree.predict(background)
+                rules = fd_tree.rules(use_latex=True)
+                groups_foreground = fd_tree.predict(foreground_slice)
+                groups_background = fd_tree.predict(background_slice)
                 n_groups = fd_tree.n_groups
+                if n_groups == 1:
+                    plot_legend = False
             else:
                 raise Exception("Invalid grouping parameter")
 
@@ -299,8 +302,7 @@ def partial_dependence_plot(decomposition, foreground, background, features,
                 x = group_foreground[sorted_idx, column]
                 curr_ax.plot(x, H, colors[group_id], alpha=0.01)
                 curr_ax.plot(x, H.mean(1), 'k', linewidth=3)
-                if n_groups > 1:
-                    curr_ax.plot(x, H.mean(1), colors[group_id], label=rules[group_id], linewidth=2)
+                curr_ax.plot(x, H.mean(1), colors[group_id], label=rules[group_id], linewidth=2)
         
             if plot_legend:
                 curr_ax.legend(fontsize=12, framealpha=1)
@@ -511,13 +513,13 @@ def plot_interaction(i, j, background, Phis, features):
     #                features.maps[j].cats)
 
 
-def interactions_heatmap(Phis, features_names):
+def interactions_heatmap(Phis, features_names, threshold=0.0005):
     d = len(features_names)
     # We normalize by the model variance
     h_var = Phis.sum(-1).sum(-1).var()
     Phi_imp = (Phis**2).mean(0) / h_var
     np.fill_diagonal(Phi_imp, 0)
-    Phi_imp[Phi_imp < 0.0005] = 0
+    Phi_imp[Phi_imp < threshold] = 0
 
     fig, ax = plt.subplots(figsize=(d, d))
     im = ax.imshow(Phi_imp, cmap='Reds')
