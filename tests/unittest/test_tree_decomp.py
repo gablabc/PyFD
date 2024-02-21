@@ -49,7 +49,7 @@ def compare_recursive_leaf(X, model, Imap_inv=None):
 
     # Make sure we output the same result
     for key in recurse_decomp.keys():
-        assert np.isclose(recurse_decomp[key][..., 0], leaf_decomp[key][..., 0]).all(), "Tree recursive and Tree leaf disagree"
+        assert np.isclose(recurse_decomp[key], leaf_decomp[key]).all(), "Tree recursive and Tree leaf disagree"
 
 
 

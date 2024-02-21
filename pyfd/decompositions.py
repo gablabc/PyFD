@@ -99,7 +99,7 @@ def get_components_linear(h, foreground, background, Imap_inv=None):
 
 
 
-def get_components_brute_force(h, foreground, background, Imap_inv=None, interactions=1, anchored=True, show_bar=True):
+def get_components_brute_force(h, foreground, background, Imap_inv=None, interactions=1, anchored=True, show_bar=False):
     """
     Compute the Anchored/Interventional Decomposition of any black box
 
@@ -119,7 +119,7 @@ def get_components_brute_force(h, foreground, background, Imap_inv=None, interac
         specified components in `interactions`.
     anchored : bool, default=True
         Flag to compute anchored decompositions or interventional decompositions. If anchored, a component
-        is (Nf, Nb) and if interventional it is (Nf, 2) with final index indicating expectancy and std.
+        is (Nf, Nb) and if interventional it is (Nf,).
     
     Returns
     -------
@@ -164,12 +164,12 @@ def get_components_brute_force(h, foreground, background, Imap_inv=None, interac
     if not anchored:
         for key, component in decomposition.items():
             if len(key) >= 1:
-                decomposition[key] = np.column_stack((component.mean(1), component.std(1)))
+                decomposition[key] = component.mean(1)
     return decomposition
 
 
 
-def get_components_adaptive(h, background, Imap_inv=None, tolerance=0.05, show_bar=True, precompute=None):
+def get_components_adaptive(h, background, Imap_inv=None, tolerance=0.05, show_bar=False, precompute=None):
     """
     Compute the Anchored/Interventional Decomposition of any black box by iteratively exploring
     the lattice space of feature interactions.
@@ -329,9 +329,9 @@ def get_components_tree(model, foreground, background, Imap_inv=None, anchored=F
 
     Returns
     -------
-    results : numpy.ndarray
-        A (Nf, n_features) array if `anchored=False`, otherwise a (Nf, Nb, n_features)
-        array of additive components.
+    decomposition : dict{Tuple: np.ndarray}
+        The various components of the decomposition indexed via their feature subset e.g. `decomposition[(0,)]`
+        returns the main effect of feature 0.
     """
 
     sym = id(foreground) == id(background)
@@ -404,8 +404,7 @@ def get_components_tree(model, foreground, background, Imap_inv=None, anchored=F
             if anchored:
                 decomp[(i,)] = results[..., i]
             else:
-                decomp[(i,)] = np.stack((results[..., i].mean(-1), 
-                                         results[..., i].std(-1)), axis=-1)
+                decomp[(i,)] = results[..., i].mean(1)
     
     elif algorithm == "leaf":
         # Where to store the output
@@ -438,7 +437,7 @@ def get_components_tree(model, foreground, background, Imap_inv=None, anchored=F
     
         # We cannot compute standard deviation with this estimator
         for i in range(D):
-            decomp[(i,)] = np.stack((results[..., i], -1 * np.ones(Nx)), axis=-1)
+            decomp[(i,)] = results[..., i]
 
     elif algorithm == "waterfall":
         # Where to store the output
@@ -467,7 +466,7 @@ def get_components_tree(model, foreground, background, Imap_inv=None, anchored=F
 
         # We cannot compute standard deviation with this estimator
         for i in range(D):
-            decomp[(i,)] = np.stack((results[..., i], -1 * np.ones(Nx)), axis=-1)
+            decomp[(i,)] = results[..., i]
     else:
         raise Exception("Invalid algorithm, pick from `recurse` `leaf` or `waterfall`")
     
@@ -475,7 +474,7 @@ def get_components_tree(model, foreground, background, Imap_inv=None, anchored=F
 
 
 
-def get_PDP_PFI_importance(decomposition, groups=None, show_bar=True):
+def get_PDP_PFI_importance(decomposition, groups=None, show_bar=False):
     """
     Compute PDP and PFI feature importance given an anchored decomposition
 
@@ -503,7 +502,8 @@ def get_PDP_PFI_importance(decomposition, groups=None, show_bar=True):
     additive_keys = [key for key in keys if len(key)==1]
     D = len(additive_keys)
     shape_decomposition = decomposition[additive_keys[0]].shape
-    assert shape_decomposition[0] == shape_decomposition[1], "The decomposition must be anchored with foreground=background"
+    assert len(shape_decomposition) == 2, "The decomposition must be anchored"
+    assert shape_decomposition[0] == shape_decomposition[1], "The decomposition must have foreground=background"
     
     # Assert if explanations are regional
     if groups is None:
@@ -555,7 +555,9 @@ def get_H_interaction(decomposition):
     additive_keys = [key for key in keys if len(key)==1]
     D = len(additive_keys)
     shape_decomposition = decomposition[additive_keys[0]].shape
-    assert shape_decomposition[0] == shape_decomposition[1], "The decomposition must be anchored with foreground=background"
+    assert len(shape_decomposition) == 2, "The decomposition must be anchored"
+    assert shape_decomposition[0] == shape_decomposition[1], "The decomposition must have foreground=background"
+    
     I_H  = np.zeros(D)
     for d in range(D):
         I_H[d]  = np.mean((decomposition[additive_keys[d]].mean(0) + \
@@ -588,10 +590,7 @@ def get_h_add(decomposition, anchored=True):
     h_add = 0
     # Additive terms
     for key in additive_keys:
-        if anchored:
-            h_add += decomposition[key]
-        else:
-            h_add += decomposition[key][:, 0]
+        h_add += decomposition[key]
     # Reference term
     if anchored:
         h_add += decomposition[()].reshape((1, -1))
@@ -622,13 +621,13 @@ def get_CoE(decomposition, anchored=True, foreground_preds=None):
         The cost of exclusion which measures 'Lack of Additivity'
     """
 
-    # We assume background-foreground in that case
+    # We assume background=foreground in that case
     if foreground_preds is None:
         foreground_preds = decomposition[()]
-    factor = 100 / np.std(foreground_preds)
+    factor = 100 / np.var(foreground_preds)
     h_add = get_h_add(decomposition, anchored)
     if anchored:
-        return factor * np.sqrt( np.mean( (foreground_preds - h_add.mean(1))**2 ) )
+        return factor * np.mean( (foreground_preds - h_add.mean(1))**2 )
     else:
-        return factor * np.sqrt( np.mean( (foreground_preds - h_add)**2 ) )
+        return factor * np.mean( (foreground_preds - h_add)**2 )
 
