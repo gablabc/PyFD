@@ -236,3 +236,46 @@ def leaf_box_recurse(box, node, features, thresholds, left_child, right_child, a
         if box[curr_feature, 0] < curr_threshold:
             curr_box[curr_feature, 0] = curr_threshold
         leaf_box_recurse(curr_box, curr_right_child, features, thresholds, left_child, right_child, all_boxes)
+
+
+
+
+def get_quantiles(x_i, bins):
+    """Get quantiles from a feature in a dataset.
+
+    Parameters
+    ----------
+    x_i : np.ndarray
+        (N,) array containing the feature
+    bins : int
+        The number of quantiles is calculated as `bins + 1`.
+
+    Returns
+    -------
+    quantiles : array-like
+        Quantiles.
+    bins : int
+        Number of bins, `len(quantiles) - 1`. This may be lower than the original
+        `bins` if identical quantiles were present.
+
+    Raises
+    ------
+    ValueError
+        If `bins` is not an integer.
+
+    Notes
+    -----
+    When using this definition of quantiles in combination with a half open interval
+    (lower quantile, upper quantile], care has to taken that the smallest observation
+    is included in the first bin. This is handled transparently by `np.digitize`.
+
+    """
+    if not isinstance(bins, (int, np.integer)):
+        raise ValueError(
+            "Expected integer 'bins', but got type '{}'.".format(type(bins))
+        )
+    quantiles = np.unique(
+        np.quantile(x_i, np.linspace(0, 1, bins + 1), interpolation="lower")
+    )
+    bins = len(quantiles) - 1
+    return quantiles, bins
