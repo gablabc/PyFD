@@ -88,10 +88,3 @@ def sample_synthetic_points(foreground, background, groups_method=None, Imap_inv
             samples.append(synthetic_pts)
 
     return np.vstack(samples)
-
-
-def extrapolation_score(ood_classifier, synthetic_data):
-    # We clip the ood_proba to ensure that the density ratio is bounded by ~100
-    ood_proba = np.clip(ood_classifier.predict_proba(synthetic_data)[:, 1], a_min=0, a_max=0.99)
-    return ood_proba.mean()
-    # return np.sqrt(np.mean(ood_proba / (1 - ood_proba)))
