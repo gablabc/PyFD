@@ -53,7 +53,7 @@ def abs_map_xerr(phi, xerr):
 
 
 
-def bar(phis, feature_labels, threshold=None, xerr=None, absolute=False, ax=None):
+def bar(phis, feature_labels, threshold=None, xerr=None, absolute=False, ax=None, color=None):
     """
     Plot Feature Importance/Attribution bars
 
@@ -142,9 +142,14 @@ def bar(phis, feature_labels, threshold=None, xerr=None, absolute=False, ax=None
                 +[-(i+1)*bar_width for i in range(stacked_bars//2)]
     
     # Get DEEL colors
-    colors = deepcopy(color_dict["DEEL"])
-    colors['pos'] = np.array(colors['pos'])/255.
-    colors['neg'] = np.array(colors['neg'])/255.
+    if color is None:
+        colors = deepcopy(color_dict["DEEL"])
+        colors['pos'] = np.array(colors['pos'])/255.
+        colors['neg'] = np.array(colors['neg'])/255.
+    else:
+        colors = {}
+        colors['pos'] = color
+        colors['neg'] = color
 
     # Error bars
     if xerr is not None:
@@ -427,10 +432,14 @@ def attrib_scatter_plot(decomposition, phis, foreground, features,
 
             # For ordinal features, we add a jitter to better see the points
             # and we spread the different background via the variable step
-            if features.types[i] in ["bool", "ordinal"]:
-                jitter = np.random.uniform(-0.05, 0.05, size=group_idxs)
+            if features.types[column] in ["bool", "nominal"]:
+                jitter = np.random.uniform(-0.05, 0.05, size=len(group_idxs))
                 step = 0.1 * (group_id - (n_groups-1) / 2)
                 curr_ax.scatter(group_foreground+jitter+step, Phis, alpha=0.25, c=colors[group_id])
+                # Enlarge the x-range to acount for jitter
+                if group_id == 0:
+                    x_min -= 0.05 + 0.1 * (n_groups-1)/2
+                    x_max += 0.05 + 0.1 * (n_groups-1)/2
             else:
                 step = 0
                 curr_ax.scatter(group_foreground, Phis, alpha=0.25, c=colors[group_id])

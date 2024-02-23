@@ -85,6 +85,7 @@ class FDTree(BaseEstimator, ABC):
         tree_strings = []
         self.group_idx = 0
         self.recurse_print_tree_str(self.root, verbose=verbose, tree_strings=tree_strings)
+        tree_strings.append(f"Final LoA {self.final_loa:.4f}")
         if return_string:
             return "\n".join(tree_strings)
         else:
@@ -426,6 +427,7 @@ class CoE_Tree(FDTree):
         # Start recursive tree growth
         self.root, self.final_objective, self.n_groups = \
                 self._tree_builder(np.arange(self.N), depth=0, loa=loa)
+        self.final_loa = self.final_objective - self.alpha * self.n_groups
         return self
 
 
@@ -479,6 +481,7 @@ class PDP_PFI_Tree(FDTree):
         # Start recursive tree growth
         self.root, self.final_objective, self.n_groups = \
                 self._tree_builder(np.arange(self.N), depth=0, loa=loa)
+        self.final_loa = self.final_objective - self.alpha * self.n_groups
         return self
 
 
@@ -536,6 +539,7 @@ class PDP_SHAP_Tree(FDTree):
         # Start recursive tree growth
         self.root, self.final_objective, self.n_groups = \
                 self._tree_builder(np.arange(self.N), depth=0, loa=loa)
+        self.final_loa = self.final_objective - self.alpha * self.n_groups
         return self
 
 
@@ -591,6 +595,8 @@ class GADGET_PDP(FDTree):
         # Start recursive tree growth
         self.root, self.final_objective, self.n_groups = \
                 self._tree_builder(np.arange(self.N), depth=0, loa=loa)
+        self.final_loa = self.final_objective - self.alpha * self.n_groups
+        return self
 
 
     def get_objective_for_splits(self, instances_idx, feature):
@@ -645,6 +651,7 @@ class CART(FDTree):
         # Start recursive tree growth
         self.root, self.final_objective, self.n_groups = \
                 self._tree_builder(np.arange(self.N), depth=0, loa=loa)
+        self.final_loa = self.final_objective - self.alpha * self.n_groups
         return self
 
 
