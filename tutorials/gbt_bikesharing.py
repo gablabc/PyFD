@@ -1,7 +1,9 @@
 # %% [markdown]
-# # Functional Decomposition of Gradient Boosted Trees on BikeSharing
-# In this tutorial we will use PyFD to decompose a complex GBT model trained to predict bike
-# rentals. We will see how to interpret said model in spite of the presence of strong feature interactions.
+# # Introduction to the PyFD package
+# In this tutorial we will use introduce most of the functionalities of the PyFD package.
+# We will go quickly through the code without in-depth explanations which are left for subsequent tutorials.
+# In this example, we will decompose a complex GBT model trained to predict bike rentals. We will see how to 
+# interpret said model in spite of the presence of strong feature interactions.
 # %% 
 import os
 import numpy as np
@@ -19,13 +21,20 @@ setup_pyplot_font(15)
 
 # %% [markdown]
 # ## Fitting model
-# We start by loading the data and fitting a `HistGradientBoostingRegressor`.
+# We start by loading the data and a `Features` object which stores
+# information about the various features. Note that the data **X** must **always**
+# be a numerical numpy array. Categorical features are assumed to have been ordinally encoded.
 # %%
 
 X, y, features = get_data_bike()
 features.maps_[1].cats = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]
 features.maps_[4].cats = ["Mon", "Thu", "Wed", "Thu", "Fri", "Sat", "Sun"]
+print(features.print_names())
+print(features.types)
 
+# %% [markdown]
+# ## Fitting model
+# Having fecthed the data, we fit a `HistGradientBoostingRegressor`.
 # %%
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 model = HistGradientBoostingRegressor(random_state=0)
@@ -78,9 +87,16 @@ print(mean_squared_error(test_preds, y_test, squared=False))
 
 # %%[markdown]
 # ## Additive Decomposition
-# We shall compute the additive decomposition of the model:
-# $$ h_{\text{add}}(x) = h_{\emptyset} + \sum_{i=1}^d h_{i}(x_i)$$
-# which amounts to computing Partial Dependence Plots along each feature.
+# This models appears to make accurate predictions of bike rentals.
+# But do you trust it? The issue it that the model $h$ is a black-box and
+# we do not (yet) understand the mechanisms happening inside. To get
+# more insight on our model, we are going to compute a functional
+# decomposition. That is, given a reference data distribution $\mathcal{B}$
+# we aim at expressing $h$ as the following sum
+# $$h(x) = \sum_{u\subseteq [d]}h_{u,\mathcal{B}}(x)$$
+# where $h_{u,\mathcal{B}}$ only depends on the subvector $x_u$.
+# Let's visualize the additive terms $h_{i,\mathcal{B}}$ of the decomposition
+# which only depend on feature $x_i$.
 # %%
 from pyfd.decompositions import get_components_tree, get_CoE
 from pyfd.plots import partial_dependence_plot
@@ -89,12 +105,21 @@ from pyfd.plots import partial_dependence_plot
 background = X_train
 # We evaluate the decomp on the whole test set
 foreground = X_test
+# Compute the functional decomposition
 decomp = get_components_tree(model, foreground, background, algorithm="leaf")
+# Plot the additive terms
 partial_dependence_plot(decomp, foreground, background, features,
                         plot_hist=True, n_cols=5)
 plt.show()
 
 # %% [markdown]
+# This plot already gives us some insight on how individual features
+# impact the model. Yet, by only considering the additive terms from the
+# decomposition, we are indirectly assuming that $h$ is additive. This is
+# not true for Gradient Boosted Trees. To measure how **far** we are from
+# additivity, we can compute the additive decomposition
+# $$ h_{\text{add}}(x) = h_{\emptyset,\mathcal{B}} + \sum_{i=1}^d h_{i,\mathcal{B}}(x_i)$$
+# which amounts to summing the curves plotted previously.
 # This additive decomposition would faithfully describe the original model 
 # $h(x) \approx h_{\text{add}}(x)$ if there were **no**
 # strong feature interactions. However, for this model, the error
@@ -105,7 +130,7 @@ print(f"CoE : {get_CoE(decomp, anchored=False, foreground_preds=test_preds):.2f}
 
 # %% [markdown]
 # 30% of the variability in the model cannot be
-# explained by its additive approximation and so the PDPs
+# explained by its additive approximation and so the curves
 # shown previously are not representative of the true model
 # behavior. We will now present various ways of dealing with
 # this issue.
@@ -208,10 +233,10 @@ decomp_grouped = get_components_tree(model, foreground, background, algorithm="l
 print(f"CoE : {get_CoE(decomp_grouped, anchored=False, foreground_preds=test_preds):.2f} %")
 
 # %% [markdown]
-# We have more than halved the CoE by grouping these three features 
+# We have reduced the CoE by a factor three by grouping these features 
 # together. The downside is that understanding
 # the effect of the meta-feature `hr:workingday:temp` requires
-# visualizing the coresponding model component $h_u(x)$ as 3D
+# visualizing the coresponding model component $h_{i,\mathcal{B}}(x)$ as 3D
 # plot. Fortunatelly, since `workingday` is binary
 # we only need to make two 2D scatter plots
 # %%
@@ -293,8 +318,8 @@ plt.show()
 
 # %% [markdown]
 # ### GADGET-PDP
-# This method consists of computing multiple PDP curves per feature
-# using data that lands on specific regions of the input space.
+# This method consists of computing multiple $h_{i,\mathcal{B}}$ 
+# curves per feature using data $\mathcal{B}$ that lands on specific regions of the input space.
 # These regions are described by rules involving the remaining features. 
 # This technique requires computing anchored decompositions. 
 # %%
@@ -316,14 +341,14 @@ partial_dependence_plot(decomp, background, background, features, groups_method=
 plt.show()
 
 # %% [markdown]
-# For every feature, we provide mutiple PDPs based on regions
-# computed with the remaining features. For instances, the PDPs
+# For every feature, we plot multiple curves based on regions
+# computed with the remaining features. For instances, the curves
 # of `hr` are partitioned according to the values of the features
 # `temp` and `working`. Given these plots, one can understand how 
 # the effect of perturbing a **single** feature depends on the fixed value of the 
 # others.
 #
-# The $\alpha$ parameter that is passed to the FDTree regularizes the complexity
+# The $\alpha$ parameter that is passed to the GADGET-PDP regularizes the complexity
 # the trees. By reducing it, we allow for more regions and by increasing
 # it we reduce the number of regions.
 # %%
@@ -342,7 +367,7 @@ plt.show()
 
 # %% [markdown]
 # ### Regional Explanations with FDTrees
-# Instead of fitting a different tree for each feature based on their PDP, we can fit a single tree and
+# Instead of fitting a different tree for each feature, we can fit a single tree and
 # explain the model behavior on each separate region.
 # %%
 from pyfd.fd_trees import CoE_Tree
@@ -367,8 +392,9 @@ tree.print(verbose=True)
 # %% [markdown]
 # This FD-Tree has four leaves that separate workingdays from
 # non-workingdays, as well as cold from non-cold temperatures.
-# Additionally, like we managed to do with grouping features, 
-# we are able to reduce the CoE to ~9%.
+# Crucially, like we managed to do previously by grouping features, 
+# we are able to reduce the CoE to ~9%. Hence, the model can be
+# better approximated as additive if we stay on the separate leaves.
 #
 # Given the FD-Tree, we can visualize the global importance in 
 # of its leaf.
@@ -388,6 +414,7 @@ plt.show()
 # Using regional backgrounds
 groups = tree.predict(background)
 rules = tree.rules(use_latex=True)
+# The groups are passed to the function
 I_PDP, I_PFI = get_PDP_PFI_importance(decomp, groups=groups)
 
 fig, axes = plt.subplots(2, 2)
@@ -399,6 +426,7 @@ for i in range(4):
         features.print_names(),
         ax=axes[row][col],
         color=COLORS[i])
+    axes[row][col].set_xlim(0, np.sqrt(I_PFI.max()))
     axes[row][col].set_title(rules[i], fontsize=10)
 plt.show()
 
@@ -420,9 +448,9 @@ plt.show()
 # play a bigger role during workingdays.
 #
 # We can also compute regional shapley values and plot
-# them along side the regional PDPs.
+# them along side the regional $h_{i,\mathcal{B}}$ curves.
 # %%
-
+# Compute SHAP values on each separate leaves
 phis_list = [0] * tree.n_groups
 for group_idx in range(tree.n_groups):
     print(f"### Region {group_idx} ###")
