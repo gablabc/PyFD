@@ -333,7 +333,7 @@ def get_data_marketing(use_target_encoder=False):
 
     # load train
     df = pd.read_csv(os.path.join(os.path.dirname(__file__),
-                    'datasets' 'marketing' 'marketing.csv'), delimiter=";")
+                    'datasets', 'marketing', 'marketing.csv'), delimiter=";")
     feature_names = df.columns[:-1]
     outcome = df.columns[-1]
 

@@ -1,7 +1,7 @@
 # %% [markdown]
 # # Introduction to the PyFD package
-# In this tutorial we will use introduce most of the functionalities of the PyFD package.
-# We will go quickly through the code without in-depth explanations which are left for subsequent tutorials.
+# This tutorial introduces most of the functionalities of the `PyFD`` package.
+# We will go quickly through the code and leave in-depth explanations for subsequent tutorials.
 # In this example, we will decompose a complex GBT model trained to predict bike rentals. We will see how to 
 # interpret said model in spite of the presence of strong feature interactions.
 # %% 
@@ -21,20 +21,19 @@ setup_pyplot_font(15)
 
 # %% [markdown]
 # ## Fitting model
-# We start by loading the data and a `Features` object which stores
+# First load the data and a `Features` object that stores
 # information about the various features. Note that the data **X** must **always**
 # be a numerical numpy array. Categorical features are assumed to have been ordinally encoded.
 # %%
 
 X, y, features = get_data_bike()
-features.maps_[1].cats = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]
-features.maps_[4].cats = ["Mon", "Thu", "Wed", "Thu", "Fri", "Sat", "Sun"]
-print(features.print_names())
-print(features.types)
+features.feature_objs[1].cats = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]
+features.feature_objs[4].cats = ["Mon", "Thu", "Wed", "Thu", "Fri", "Sat", "Sun"]
+print(features.summary())
 
 # %% [markdown]
 # ## Fitting model
-# Having fecthed the data, we fit a `HistGradientBoostingRegressor`.
+# Having fetched the data, we fit a `HistGradientBoostingRegressor`.
 # %%
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 model = HistGradientBoostingRegressor(random_state=0)
@@ -122,7 +121,7 @@ plt.show()
 # which amounts to summing the curves plotted previously.
 # This additive decomposition would faithfully describe the original model 
 # $h(x) \approx h_{\text{add}}(x)$ if there were **no**
-# strong feature interactions. However, for this model, the error
+# strong feature interactions. However, for this model, the Cost of Exclusion (CoE)
 # $$\mathbb{E}[(h(x) - h_{\text{add}}(x))^2] / \mathbb{V}[h(x)]$$ 
 # is large.
 # %%
@@ -217,17 +216,23 @@ from pyfd.shapley import interventional_treeshap
 from pyfd.plots import bar
 
 grouped_features = features.group([[2, 5, 7]])
-print(grouped_features.print_names())
+print(grouped_features.summary())
 
 # %% [markdown]
-# To know which meta-feature maps to which columns of the
-# input matrix **X**, we can print the `Imap_inv` attribute
-# and pass it to the decomposition algorithm.
+# We have a new feature `hr:workingday:temp`. The column `I^-1({i})` in the 
+# summary table represents the pre-image of each feature i.e. what columns of *X* 
+# map to each feature. Here we have `I^-1({i})=[2, 5, 7]` because columns 2, 5 and 7 
+# all encode the meya-feature `hr:workingday:temp`.
+#
+# To compute a decomposition using this new meta-feature, the `Imap_inv` attribute 
+# of `grouped_features` must be passed to the the decomposition algorithm.
 # %%
-print(grouped_features.Imap_inv)
+
 background = X_train
 foreground = X_test
+# Without feature grouping
 decomp = get_components_tree(model, foreground, background, algorithm="leaf")
+# With feature grouping
 decomp_grouped = get_components_tree(model, foreground, background, algorithm="leaf", 
                                     Imap_inv=grouped_features.Imap_inv)
 print(f"CoE : {get_CoE(decomp_grouped, anchored=False, foreground_preds=test_preds):.2f} %")
@@ -238,7 +243,7 @@ print(f"CoE : {get_CoE(decomp_grouped, anchored=False, foreground_preds=test_pre
 # the effect of the meta-feature `hr:workingday:temp` requires
 # visualizing the coresponding model component $h_{i,\mathcal{B}}(x)$ as 3D
 # plot. Fortunatelly, since `workingday` is binary
-# we only need to make two 2D scatter plots
+# we only need to make two 2D scatter plots.
 # %%
 phi = decomp_grouped[(7,)]
 
@@ -259,11 +264,12 @@ plt.show()
 
 # %% [markdown]
 # Shapley values can also be computed while treating these tree features as a single
-# **player** in a coallitional game. This is gain done by passing the 
+# **player** in a coallitional game. This is done by passing the 
 # `Imap_inv` attribute to `interventional_treeshap`.
 # %%
-
+# Without feature grouping
 shapley_values = interventional_treeshap(model, foreground, background, algorithm="leaf")
+# With feature grouping
 shapley_values_grouped = interventional_treeshap(model, foreground, background, 
                                             Imap_inv=grouped_features.Imap_inv, algorithm="leaf")
 
@@ -282,6 +288,7 @@ for idx in range(0, 10, 2):
     pdp = np.array([decomp[(i,)][idx] for i in range(d)])
     bar([pdp, shapley_values[idx]], x_map)
     plt.title(f"Target {y_test[idx]} Prediction {pred[0]:.3f}")
+    # The disagreement between PDP-SHAP
     print(np.sqrt(np.mean((pdp - shapley_values[idx])**2)))
 
     # With feature grouping
@@ -289,6 +296,7 @@ for idx in range(0, 10, 2):
     pdp_grouped = np.array([decomp_grouped[(i,)][idx] for i in range(D)])
     bar([pdp_grouped, shapley_values_grouped[idx]], x_map)
     plt.title(f"Target {y_test[idx]} Prediction {pred[0]:.3f}")
+    # The disagreement between PDP-SHAP
     print(np.sqrt(np.mean((pdp_grouped - shapley_values_grouped[idx])**2)))
     plt.show()
 
@@ -336,15 +344,17 @@ decomp = get_components_tree(model, background, background, anchored=True)
 # `grouping="gadget-pdp` to `partial_dependence_plot`.
 # %%
 
-partial_dependence_plot(decomp, background, background, features, groups_method="gadget-pdp",
-                        fd_trees_kwargs={"max_depth":2, "alpha": 0.01}, n_cols=3, figsize=(20, 20))
+partial_dependence_plot(decomp, background, background, features,
+                        groups_method="gadget-pdp",
+                        fd_trees_kwargs={"max_depth":2, "alpha": 0.01}, 
+                        n_cols=3, figsize=(20, 20))
 plt.show()
 
 # %% [markdown]
 # For every feature, we plot multiple curves based on regions
 # computed with the remaining features. For instances, the curves
 # of `hr` are partitioned according to the values of the features
-# `temp` and `working`. Given these plots, one can understand how 
+# `temp` and `workingday`. Given these plots, one can understand how 
 # the effect of perturbing a **single** feature depends on the fixed value of the 
 # others.
 #
@@ -354,14 +364,16 @@ plt.show()
 # %%
 # Less regions
 partial_dependence_plot(decomp, background, background, features, 
-                        groups_method="gadget-pdp", fd_trees_kwargs={"max_depth":2, "alpha": 0.02}, 
+                        groups_method="gadget-pdp", 
+                        fd_trees_kwargs={"max_depth":2, "alpha": 0.02},
                         normalize_y=False, n_cols=3, figsize=(20, 20))
 plt.show()
 
 # %%
 # More regions
 partial_dependence_plot(decomp, background, background, features,
-                        groups_method="gadget-pdp", fd_trees_kwargs={"max_depth":2, "alpha": 0.001}, 
+                        groups_method="gadget-pdp", 
+                        fd_trees_kwargs={"max_depth":2, "alpha": 0.001},
                         normalize_y=False, n_cols=3, figsize=(20, 20))
 plt.show()
 
@@ -371,7 +383,7 @@ plt.show()
 # explain the model behavior on each separate region.
 # %%
 from pyfd.fd_trees import CoE_Tree
-from pyfd.decompositions import get_PDP_PFI_importance
+from pyfd.decompositions import get_PDP_PFI_importance, get_components_tree
 from pyfd.shapley import interventional_treeshap
 from pyfd.plots import bar, attrib_scatter_plot, plot_legend, COLORS
 
@@ -431,7 +443,7 @@ for i in range(4):
 plt.show()
 
 # %% [markdown]
-# Let us take the time to analyze these results. First
+# Let us take the time to analyze these results. First,
 # there are no longer disagreements regarding the importance
 # of `workingday` : all regions give it no importance. This
 # does not mean that `workingday` is not important!
@@ -467,7 +479,7 @@ for group_idx in range(tree.n_groups):
 
 attrib_scatter_plot(decomp, phis_list, background, features, 
                     groups=groups, normalize_y=False)
-plot_legend(rules, ncol=4)
+plot_legend(rules, ncol=2)
 plt.show()
 
 # %%
