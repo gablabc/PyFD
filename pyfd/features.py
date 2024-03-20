@@ -232,14 +232,14 @@ class Features(object):
         return [obj.type for obj in self.feature_objs]
     
     def summary(self):
-        free_space = [20, 20, 10, 20]
-        print_res =  "|        Name        |        Type        |   Card   |      I^-1({i})     |\n"
-        print_res += "---------------------------------------------------------------------------\n"
+        free_space = [3, 20, 20, 12, 18]
+        print_res =  "|Idx|        Name        |        Type        |    Card    |     I^-1({i})    |\n"
+        print_res += "-------------------------------------------------------------------------------\n"
         for i in range(len(self.Imap_inv)):
             print_res += "|"
             obj = self.feature_objs[i]
-            properties = [obj.name, obj.type, obj.card, self.Imap_inv[i]]
-            for j in range(4):
+            properties = [i, obj.name, obj.type, obj.card, self.Imap_inv[i]]
+            for j in range(5):
                 property = str(properties[j])
                 if len(property) < free_space[j]:
                     space = free_space[j] - len(property) - 1

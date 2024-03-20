@@ -73,7 +73,7 @@ class FDTree(BaseEstimator, ABC):
             Regularization of the training objective `LoA + alpha |L|`. That is, splitting nodes increases the loss by `alpha`
             and so the reduction in `LoA` must be large enough to compensate.
         """
-        self.features = features
+        self.feature_objs = features.feature_objs
         self.max_depth = max_depth
         self.min_samples_leaf = min_samples_leaf
         self.branching_per_node = branching_per_node
@@ -102,7 +102,7 @@ class FDTree(BaseEstimator, ABC):
             self.group_idx += 1
         # Internal node
         else:
-            curr_feature_name = self.features.names_[node.feature]
+            curr_feature_name = self.feature_objs[node.feature].name
             tree_strings.append("|   " * node.depth + f"If {curr_feature_name} ≤ {node.threshold:.4f}:")
             self.recurse_print_tree_str(node=node.child_left, verbose=verbose, tree_strings=tree_strings)
             tree_strings.append("|   " * node.depth + "else:")
@@ -111,7 +111,7 @@ class FDTree(BaseEstimator, ABC):
 
     def get_split_candidates(self, x_i, i):
         """ Return a list of split candiates """
-        if self.features.types[i] == "num":
+        if self.feature_objs[i].type == "num":
             x_i_unique = np.unique(x_i)
             if len(x_i_unique) < 40:
                 splits = np.sort(x_i_unique)[:-1:]
@@ -120,7 +120,7 @@ class FDTree(BaseEstimator, ABC):
                 # It is possible that quantiles equal the last element when there are
                 # duplications. Hence we remove those splits to avoid leaves with no data
                 splits = splits[~np.isclose(splits, np.max(x_i))]
-        elif self.features.types[i] == "sparse_num":
+        elif self.feature_objs[i].type == "sparse_num":
             is_nonzero = np.where(x_i > 0)[0]
             if len(is_nonzero) == 0:
                 splits = []
@@ -135,9 +135,9 @@ class FDTree(BaseEstimator, ABC):
                 # duplications. Hence we remove those splits to avoid leaves with no data
                 splits = splits[~np.isclose(splits, np.max(x_i))]
         # Integers we take the values directly
-        elif self.features.types[i] in ["ordinal", "num_int"]:
+        elif self.feature_objs[i].type in ["ordinal", "num_int"]:
             splits = np.sort(np.unique(x_i))[:-1]
-        elif self.features.types[i] == "bool":
+        elif self.feature_objs[i].type == "bool":
             x_i = np.unique(x_i)
             if len(x_i) == 1:
                 splits = []
@@ -306,8 +306,9 @@ class FDTree(BaseEstimator, ABC):
             self.group_idx += 1
         else:
 
-            feature_name = self.features.names_[node.feature]
-            feature_type = self.features.types[node.feature]
+            feature_obj = self.feature_objs[node.feature]
+            feature_name = feature_obj.name
+            feature_type = feature_obj.type
 
             # Boolean
             if feature_type == "bool":
@@ -315,7 +316,7 @@ class FDTree(BaseEstimator, ABC):
                 curr_rule.append(f"not {feature_name}")
             # Ordinal
             elif feature_type == "ordinal":
-                categories = np.array(self.features.maps_[node.feature].cats)
+                categories = np.array(feature_obj.cats)
                 cats_left = categories[:int(node.threshold)+1]
                 if len(cats_left) == 1:
                     curr_rule.append(f"{feature_name}={cats_left[0]}")
@@ -642,12 +643,12 @@ class CART(FDTree):
         super().__init__(*args, **kwargs)
 
 
-    def fit(self, X, decomposition):
+    def fit(self, X, target):
         self.X = X
         self.N, self.D = X.shape
-        self.h = decomposition[()]
-        self.loa_factor = 1 / self.h.var() # To have an loa [0, 1]
-        loa = self.h.var()
+        self.target = target
+        self.loa_factor = 1 / self.target.var() # To have an loss [0, 1]
+        loa = self.target.var()
         # Start recursive tree growth
         self.root, self.final_objective, self.n_groups = \
                 self._tree_builder(np.arange(self.N), depth=0, loa=loa)
@@ -674,8 +675,8 @@ class CART(FDTree):
             left = instances_idx[x_i <= split]
             right = instances_idx[x_i > split]
             to_keep[i] = min(len(left), len(right)) >= self.min_samples_leaf
-            objective_left[i] = np.sum((self.h[left] - self.h[left].mean())**2)
-            objective_right[i] = np.sum((self.h[right] - self.h[right].mean())**2)
+            objective_left[i] = np.sum((self.target[left] - self.target[left].mean())**2)
+            objective_right[i] = np.sum((self.target[right] - self.target[right].mean())**2)
         
         return splits[to_keep], objective_left[to_keep], objective_right[to_keep]
 

@@ -200,17 +200,22 @@ def bar(phis, feature_labels, threshold=None, xerr=None, absolute=False, ax=None
 
 
 
-def partial_dependence_plot(decomposition, foreground, background, features,
+def partial_dependence_plot(decomposition, foreground, background, features, idxs=None,
                             groups_method=None, rules=None, fd_trees_kwargs={}, centered=True,
-                            figsize=(24, 10), n_cols=5, plot_hist=False, normalize_y=True):
+                            figsize=(24, 10), n_cols=5, plot_hist=False, normalize_y=True, alpha=0.01):
     
-    Imap_inv = deepcopy(features.Imap_inv)
-    for i in range(len(Imap_inv)):
-        assert len(Imap_inv[i]) == 1, "No feature grouping in PDP plots"
-        Imap_inv[i] = Imap_inv[i][0]
+    # If no idx is provided, we plot all features
+    if idxs is None:
+        idxs = range(len(features))
+        Imap_inv = deepcopy(features.Imap_inv)
+    else:
+        Imap_inv = deepcopy([features.Imap_inv[i] for i in idxs])
+    for idx in idxs:
+        assert len(Imap_inv[idx]) == 1, "No feature grouping in PDP plots"
+        Imap_inv[idx] = Imap_inv[idx][0]
     
     anchored = decomposition[(0,)].shape == (foreground.shape[0], background.shape[0])
-    additive_keys = [key for key in decomposition.keys() if len(key)==1]
+    additive_keys = [(idx,) for idx in idxs]
     d = len(additive_keys)
 
     if anchored:
@@ -221,19 +226,19 @@ def partial_dependence_plot(decomposition, foreground, background, features,
         y_min = min([decomposition[key].min() for key in additive_keys])
         y_max = max([decomposition[key].max() for key in additive_keys])
         importance = np.array([np.var(decomposition[key]) for key in additive_keys])
-    order = np.argsort(-importance)
+    idxs_ordered = [idxs[i] for i in np.argsort(-importance)]
 
     delta_y = (y_max-y_min)
     y_min = y_min - delta_y*0.01
     y_max = y_max + delta_y*0.01
 
-    if len(order) < n_cols:
-        n_cols = len(order)
+    if len(idxs) < n_cols:
+        n_cols = len(idxs)
         n_rows = 1
     else:
         n_rows = ceil(d / n_cols)
     _, ax = plt.subplots(n_rows, n_cols, figsize=figsize)
-    for iter, idx in enumerate(order):
+    for iter, idx in enumerate(idxs_ordered):
         curr_ax = ax[iter] if n_rows == 1 else ax[iter//n_cols][iter%n_cols]
 
         # Key represents the name of the component
@@ -242,8 +247,11 @@ def partial_dependence_plot(decomposition, foreground, background, features,
         column = Imap_inv[idx]
         x_min = foreground[:, column].min()
         x_max = foreground[:, column].max()
+        # What feature is being studied
+        feature = features.feature_objs[idx]
 
         if plot_hist:
+            # TODO plot better histograms when categorical or integer
             _, _, rects = curr_ax.hist(foreground[:, column], bins=20, rwidth=0.95, color="gray", alpha=0.6, bottom=y_min)
             max_height = max([h.get_height() for h in rects])
             target_max_height = 0.5 * delta_y
@@ -263,35 +271,32 @@ def partial_dependence_plot(decomposition, foreground, background, features,
                 groups_background = np.zeros(background.shape[0])
             elif callable(groups_method):
                 colors = COLORS
-                plot_legend = True
                 assert rules is not None, "When providing groups you must also provide their rule description"
                 n_groups = len(rules)
                 groups_foreground = groups_method(foreground)
                 groups_background = groups_method(background)
             elif groups_method in ["gadget-pdp", "pdp-pfi"]:
                 colors = COLORS
-                plot_legend = True
                 assert id(foreground) ==  id(background) ,"FDTrees requires background=foreground"
                 # Fit a FDTree to reduce interactions involving the feature `column`
                 decomp_copy = {}
                 decomp_copy[()] = decomposition[()]
                 decomp_copy[(0,)] = decomposition[key]
                 background_slice = np.delete(background, column, axis=1)
-                foreground_slice = np.delete(foreground, column, axis=1)
                 features_slice = features.remove([column])
                 fd_tree = GADGET_PDP(features=features_slice, **fd_trees_kwargs) if groups_method == "gadget-pdp" \
                     else  PDP_PFI_Tree(features=features_slice, **fd_trees_kwargs) 
                 fd_tree.fit(background_slice, decomp_copy)
                 rules = fd_tree.rules(use_latex=True)
-                groups_foreground = fd_tree.predict(foreground_slice)
                 groups_background = fd_tree.predict(background_slice)
+                groups_foreground = groups_background
                 n_groups = fd_tree.n_groups
-                if n_groups == 1:
-                    plot_legend = False
+                plot_legend = n_groups > 1
             else:
                 raise Exception("Invalid grouping parameter")
 
             # For each group plot the anchored components in color
+            n_curves_max = 500 // n_groups
             for group_id in range(n_groups):
                 group_foreground = foreground[groups_foreground==group_id]
                 sorted_idx = np.argsort(group_foreground[:, column])
@@ -302,10 +307,11 @@ def partial_dependence_plot(decomposition, foreground, background, features,
                 if centered:
                     H = H - H.mean(0)
                 # Otherwise show the pdp/ice plus intercept
-                else:
-                    H += decomposition[()][select_b.ravel()]
+                # else:
+                #     H += decomposition[()][select_b.ravel()]
                 x = group_foreground[sorted_idx, column]
-                curr_ax.plot(x, H, colors[group_id], alpha=0.01)
+                # Plot at most 200 ICE curves
+                curr_ax.plot(x, H[:, :n_curves_max], colors[group_id], alpha=alpha)
                 curr_ax.plot(x, H.mean(1), 'k', linewidth=3)
                 curr_ax.plot(x, H.mean(1), colors[group_id], label=rules[group_id], linewidth=2)
         
@@ -313,9 +319,9 @@ def partial_dependence_plot(decomposition, foreground, background, features,
                 curr_ax.legend(fontsize=12, framealpha=1)
         
         # xticks labels for categorical data
-        if features.types[column] in ["bool", "ordinal", "nominal"]:
-            if features.types[column] in ["ordinal", "nominal"]:
-                categories = features.maps_[column].cats
+        if feature.type in ["bool", "ordinal", "nominal"]:
+            if feature.type in ["ordinal", "nominal"]:
+                categories = feature.cats
                 # Truncate names if too long
                 # if len(categories) > 5:
                 # categories = [name[:3] for name in categories]
@@ -327,7 +333,7 @@ def partial_dependence_plot(decomposition, foreground, background, features,
         
         # Set ticks and labels
         curr_ax.grid('on')
-        curr_ax.set_xlabel(features.names_[column])
+        curr_ax.set_xlabel(feature.name)
         if iter%n_cols == 0:
             curr_ax.set_ylabel("Local Feature Attribution")
         curr_ax.set_xlim(x_min, x_max)
@@ -400,6 +406,7 @@ def attrib_scatter_plot(decomposition, phis, foreground, features,
         column = Imap_inv[idx]
         x_min = foreground[:, column].min()
         x_max = foreground[:, column].max()
+        feature = features.feature_objs[idx]
 
         # For each group plot the anchored components in color
         for group_id in range(n_groups):
@@ -432,7 +439,7 @@ def attrib_scatter_plot(decomposition, phis, foreground, features,
 
             # For ordinal features, we add a jitter to better see the points
             # and we spread the different background via the variable step
-            if features.types[column] in ["bool", "nominal"]:
+            if feature.type in ["bool", "nominal"]:
                 jitter = np.random.uniform(-0.05, 0.05, size=len(group_idxs))
                 step = 0.1 * (group_id - (n_groups-1) / 2)
                 curr_ax.scatter(group_foreground+jitter+step, Phis, alpha=0.25, c=colors[group_id])
@@ -450,9 +457,9 @@ def attrib_scatter_plot(decomposition, phis, foreground, features,
                 curr_ax.plot(group_foreground+step, H, colors[group_id], linewidth=2)
     
         # xticks labels for categorical data
-        if features.types[column] in ["bool", "ordinal", "nominal"]:
-            if features.types[column] in ["ordinal", "nominal"]:
-                categories = features.maps_[column].cats
+        if feature.type in ["bool", "ordinal", "nominal"]:
+            if feature.type in ["ordinal", "nominal"]:
+                categories = feature.cats
                 # Truncate names if too long
                 # if len(categories) > 5:
                 # categories = [name[:3] for name in categories]
@@ -464,7 +471,7 @@ def attrib_scatter_plot(decomposition, phis, foreground, features,
         
         # Set ticks and labels
         curr_ax.grid('on')
-        curr_ax.set_xlabel(features.names_[column])
+        curr_ax.set_xlabel(feature.name)
         if iter%n_cols == 0:
             curr_ax.set_ylabel("Local Feature Attribution")
         curr_ax.set_xlim(x_min, x_max)
@@ -487,36 +494,38 @@ def plot_legend(rules, figsize=(5, 0.6), ncol=4):
 
 # Visualize the strongest interactions
 def plot_interaction(i, j, background, Phis, features):
-    names = features.print_names()
+    
+    feature_i = features.feature_objs[i]
+    feature_j = features.feature_objs[j]
     plt.figure()
-    if features.types[j] == "ordinal":
-        for category_idx, category in enumerate(features.maps_[j].cats):
+    if feature_j.type == "ordinal":
+        for category_idx, category in enumerate(feature_j.cats):
             idx = background[:, j] == category_idx
             plt.scatter(background[idx, i],
                         Phis[idx, i, j], alpha=0.75, c=COLORS[category_idx],
-                        label=f"{names[j]}={category}")
+                        label=f"{feature_j.name}={category}")
         plt.legend()
-        plt.xlabel(names[i])
+        plt.xlabel(feature_i.name)
         plt.ylabel("Interaction")
-    elif features.types[j] == "bool":
+    elif feature_j.type == "bool":
         for value in [False, True]:
             idx = np.isclose(background[:, j], int(value))
             plt.scatter(background[idx, i],
                         Phis[idx, i, j], alpha=0.75, c=COLORS[int(value)],
-                        label=f"{names[j]}={value}")
+                        label=f"{feature_j.name}={value}")
         plt.legend()
-        plt.xlabel(names[i])
+        plt.xlabel(feature_i.name)
         plt.ylabel("Interaction")
     else:
         plt.scatter(background[:, i],
                     background[:, j], c=2*Phis[:, i, j], 
                     cmap='seismic', alpha=0.75)
-        plt.xlabel(names[i])
-        plt.ylabel(names[j])
+        plt.ylabel(feature_j.name)
+        plt.xlabel(feature_j.name)
         plt.colorbar()
-    if features.types[i] == "ordinal":
-        plt.xticks(np.arange(len(features.maps[i].cats)),
-                   features.maps[i].cats)
+    if feature_i.type == "ordinal":
+        plt.xticks(np.arange(len(feature_i.cats)),
+                   feature_i.cats)
     # if features.types[j] == "ordinal":
     #    plt.yticks(np.arange(len(features.maps[j].cats)),
     #                features.maps[j].cats)
