@@ -29,14 +29,14 @@ def get_components_linear(h, foreground, background, Imap_inv=None):
     Parameters
     ----------
     h : model X -> R
-        A sklearn LinearModel or a Pipeline with a LinearModel as the last layer
+        A sklearn LinearModel or a Pipeline with a LinearModel as the last layer.
     foreground : (Nf, d) np.ndarray
-        The data points at which to evaluate the decomposition
+        The data points at which to evaluate the decomposition.
     background : (Nb, d) np.ndarray
-        The data points at which to anchor the decomposition
+        The data points at which to anchor the decomposition.
     Imap_inv : List(List(int)), default=None
         A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
-        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature
+        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature.
     
     Returns
     -------
@@ -71,7 +71,7 @@ def get_components_linear(h, foreground, background, Imap_inv=None):
     decomposition = {}
     decomposition[()] = h_emptyset_z.mean()
 
-    #If h is a Pipeline whose last layer is a linear model, we propagate the foreground and background
+    # If h is a Pipeline whose last layer is a linear model, we propagate the foreground and background
     # up to that point and we compute the Imap_inv up to the linear layer
     if is_pipeline:
         preprocessing = h[:-1]

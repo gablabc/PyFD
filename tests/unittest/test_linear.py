@@ -2,9 +2,7 @@
 
 import pytest
 import numpy as np
-import matplotlib.pyplot as plt
 from sklearn.linear_model import Ridge, LogisticRegression
-from interpret.glassbox import ExplainableBoostingRegressor, ExplainableBoostingClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import FunctionTransformer, SplineTransformer

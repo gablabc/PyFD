@@ -29,8 +29,8 @@ setup_pyplot_font(20)
 X, y, features = get_data_bike()
 d = len(features)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-features.maps_[1].cats = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]
-features.maps_[4].cats = ["Mon", "Thu", "Wed", "Thu", "Fri", "Sat", "Sun"]
+features.feature_objs[1].cats = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]
+features.feature_objs[4].cats = ["Mon", "Thu", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 # %%
 encoder = ColumnTransformer([('identify', FunctionTransformer(), [0, 3, 5, 6, 9]),
