@@ -98,6 +98,65 @@ def get_components_linear(h, foreground, background, Imap_inv=None):
 #######################################################################################
 
 
+def _get_anchored_components_u(decomposition, h, key, Imap_inv, x_idxs, foreground, background):
+    """
+    Compute the Anchored Decomposition h_u(x) for a given u and at given x values
+
+    Parameters
+    ----------
+    decomposition : dict{Tuple: np.ndarray}
+        The various components of the decomposition indexed via their feature subset e.g. `decomposition[(1, 2, 3)]`
+        returns the 3-way interactions between features 1, 2 and 3.
+    h : model X -> R
+        A callable black box `h(X)`.
+    key : Tuple(Int)
+        The key that represents the set u at which to evaluate h_u.
+    Imap_inv : List(List(int)), default=None
+        A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
+        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature.
+    x_idxs : List(Int)
+        The index of all foreground points at which to evaluate the decomposition. This parameter is useful
+        when there are repetitions in feature values and so it is not necessary to loop over all background
+        points. 
+    foreground : (Nf, d) np.ndarray
+        The data points at which to evaluate the decomposition.
+    background : (Nb, d) np.ndarray
+        The data points at which to anchor the decomposition.
+    
+    Returns
+    -------
+    results : (len(x_idxs), Nb) np.ndarray
+        The decomposition h_u anchored at all background points and evaluated at all foreground points.
+    """
+    N_eval = len(x_idxs)
+    N_ref = background.shape[0]
+    result = np.zeros((N_eval, N_ref))
+    data_temp = np.copy(background)
+    # Compute h_{u,k}(x) for all x to eval
+    for i, x_idx in enumerate(x_idxs):
+        # Annihilation property
+        annihilated = np.zeros((N_ref,))
+        for j in key:
+            annihilated += (foreground[x_idx, Imap_inv[j]] == background[:, Imap_inv[j]]).all(axis=1)
+        not_annihilated = np.where(annihilated == 0)[0]
+        
+        # Compute the component
+        U = ravel([Imap_inv[j] for j in key])
+        if not_annihilated.sum() > 0:
+            data_temp[not_annihilated.reshape((-1, 1)), U] = foreground[x_idx, U]
+            h_replace = h(data_temp[not_annihilated])
+            result[i, not_annihilated] += h_replace
+            # Remove all contributions of subsets to get the interaction
+            for subset in powerset(key):
+                if subset not in decomposition:
+                    raise Exception("The provided interaction set is not closed downward")
+                if len(subset) > 0:
+                    result[i, not_annihilated] -= decomposition[subset][x_idx, not_annihilated]
+                else:
+                    result[i, not_annihilated] -= decomposition[subset][not_annihilated]
+    return result
+
+
 
 def get_components_brute_force(h, foreground, background, Imap_inv=None, interactions=1, anchored=True, show_bar=False):
     """
@@ -108,18 +167,20 @@ def get_components_brute_force(h, foreground, background, Imap_inv=None, interac
     h : model X -> R
         A callable black box `h(X)`.
     foreground : (Nf, d) np.ndarray
-        The data points at which to evaluate the decomposition
+        The data points at which to evaluate the decomposition.
     background : (Nb, d) np.ndarray
-        The data points at which to anchor the decomposition
+        The data points at which to anchor the decomposition.
     Imap_inv : List(List(int)), default=None
         A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
-        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature
+        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature.
     interactions : int, List(Tuple(int)), default=1
         The highest level of interactions to consider. If it is a list of tuples, then we compute all
         specified components in `interactions`.
     anchored : bool, default=True
         Flag to compute anchored decompositions or interventional decompositions. If anchored, a component
         is (Nf, Nb) and if interventional it is (Nf,).
+    show_bar : bool, default=False
+        Flag to decide if progress bar is shown.
     
     Returns
     -------
@@ -129,38 +190,46 @@ def get_components_brute_force(h, foreground, background, Imap_inv=None, interac
     """
     
     # Setup
-    foreground, Imap_inv, iterator_, one_group = setup_brute_force(foreground, background, Imap_inv, interactions, show_bar)
-    N_ref = background.shape[0]
+    foreground, Imap_inv, iterator_ = setup_brute_force(foreground, background, Imap_inv, interactions, show_bar)
     N_eval = foreground.shape[0]
-
-    # Average prediction
+    N_ref = background.shape[0]
     decomposition = {}
 
-    # Compute all additive components  h_{i, z}(x) = h(x_i, z_-i) - h(z)
-    # for all feature groups i in Imap_inv and points x,z
-    h_emptyset_z = h(background)
-    decomposition[()] = h_emptyset_z
+    # Compute the intercept
+    decomposition[()] = h(background)
 
-    data_temp = np.copy(background)
-    # Model-Agnostic Implementation (very costly in time and memory)
-    # Compute h_{u, z}(x) = h(x_{u}, z_-{u}) - sum_{v\subset u} h_{u, z}(x)
-    for key in iterator_():
-        decomposition[key] = np.zeros((N_eval, N_ref))
-        idx = ravel([Imap_inv[i] for i in key])
-        for n in range(N_eval):
-            if one_group:
-                data_temp[:, idx] = foreground[n]
+    # It is possible that foreground points have the same feature value. For low order interactions
+    # it could be better to iterate over all unique feature values rather than iterating over
+    # all x in foregroud
+    unique_feature_values = []
+    for i in Imap_inv:
+        if len(i) == 1:
+            unique, indices = np.unique(foreground[:, i], return_index=True)
+            # Is it worst to iterate on unique feature value?
+            if len(unique) < N_eval:
+                unique_feature_values.append([unique, indices])
             else:
-                data_temp[:, idx] = foreground[n, idx]
-            h_ij_z = h(data_temp)
-            decomposition[key][n] += h_ij_z
-        # Reset the copied background
-        data_temp[:,  idx] = background[:,  idx] 
-        # Remove all contributions of subsets to get the interaction
-        for subset in powerset(key):
-            if subset not in decomposition:
-                raise Exception("The provided interaction set is not closed downward")
-            decomposition[key] -= decomposition[subset]
+                unique_feature_values.append(None)
+        else:
+            unique_feature_values.append(None)
+    
+    # Compute the components h_u for all u in U
+    for key in iterator_():
+        # Iterate over unique values of x_i
+        if len(key) == 1 and unique_feature_values[key[0]] is not None:
+            unique, indices = unique_feature_values[key[0]]
+            x_idxs = indices
+            result = _get_anchored_components_u(decomposition, h, key, Imap_inv, x_idxs, foreground, background)
+            decomposition[key] = np.zeros((N_eval, N_ref))
+            for i, value in enumerate(unique):
+                select = foreground[:, Imap_inv[key[0]][0]]==value
+                decomposition[key][select] = result[i]
+        # Or Iterate over all N_eval foreground points
+        else:
+            x_idxs = np.arange(N_eval)
+            result = _get_anchored_components_u(decomposition, h, key, Imap_inv, x_idxs, foreground, background)
+            decomposition[key] = result
+    # Interventional decompositions require averaging along axis=1
     if not anchored:
         for key, component in decomposition.items():
             if len(key) >= 1:
@@ -203,24 +272,10 @@ def get_components_adaptive(h, background, Imap_inv=None, tolerance=0.05, show_b
     Imap_inv, D, is_fullpartition = check_Imap_inv(Imap_inv, background.shape[1])
     assert is_fullpartition, "In adaptive, Imap_inv must be a partition of the input columns"
     N = background.shape[0]
-    data_temp = np.copy(background)
 
-    # We compute the additive decomposition if it is not precomputed
+    # Compute the additive decomposition if it is not precomputed
     if precompute is None:
-        # Average prediction
-        decomposition = {}
-        decomposition[()] = h(background)
-
-        # Compute all additive components  h_{i, z}(x) = h(x_i, z_-i) - h(z)
-        # for all feature groups i in Imap_inv and points x,z
-        for i in tqdm(range(D), desc="Additive Components", disable=not show_bar):
-            decomposition[(i,)] = np.zeros((N, N))
-            for n in range(N):
-                data_temp[:, Imap_inv[i]] = background[n, Imap_inv[i]]
-                decomposition[(i,)][n] = h(data_temp) - decomposition[()]
-            # Reset the copied background
-            data_temp[:,  Imap_inv[i]] = background[:,  Imap_inv[i]]
-
+        decomposition = get_components_brute_force(h, background, background, Imap_inv, show_bar=show_bar)
     else:
         assert () in precompute.keys()
         assert precompute[()].shape == (N,)
@@ -229,70 +284,54 @@ def get_components_adaptive(h, background, Imap_inv=None, tolerance=0.05, show_b
             assert precompute[(i,)].shape == (N, N)
         decomposition = deepcopy(precompute)
         
-    
-    # Setup for the adaptive interaction search
+    # Setup for lattice space search
     variance = decomposition[()].var()
     h_proj = get_h_add(decomposition, anchored=True).mean(1)
     loss = np.mean( ( decomposition[()] - h_proj ) ** 2)
     # We get the interaction strenght for each of the current subsets u\in U
-    psi, U = get_H_interaction(decomposition, return_keys=True)
-    # Data structure counting how many times we saw each super set
-    seen_super_sets = {}
-    # Store the decomposition without necessarily adding it to the dict
-    temp_h_replace = np.zeros((N, N))
+    Psi, U = get_H_interaction(decomposition, return_keys=True)
+    # Data structure counting how many times a candidate was proposed by its direct children
+    candidates = {}
 
-    # If specified, we compute all interactions up to a given size
+    # Iterate until the reconstruction loss is low
     while loss / variance > tolerance:
-        choice = np.argmax(psi)
-        u = U[choice]
+        choice = np.argmax(Psi)
+        u_star = U[choice]
         
-        # Never pick this point again
-        psi[choice] = -1
+        # Never pick this node again
+        Psi[choice] = -1
 
-        # Update the collection of supersets
-        combine_candidates = [(i,) for i in range(D) if not i in u]
+        # Update the collection of candidates
+        combine_candidates = [(k,) for k in range(D) if not k in u_star]
         for u_combine in combine_candidates:
-            super_set = tuple(sorted(u_combine + u))
-            # If never seen we add it to the dict
-            if not super_set in seen_super_sets.keys():
-                seen_super_sets[super_set] = 1
-            # If already seen we increase its counter by one
+            u_candidate = tuple(sorted(u_combine + u_star))
+            # Candidate never seen so add it to the dict
+            if not u_candidate in candidates.keys():
+                candidates[u_candidate] = 1
             else:
-                seen_super_sets[super_set] += 1
-                # When all of its subsets are in U we can add it to U
-                if seen_super_sets[super_set] == len(super_set):
+                # Candidate already seen so increase its counter by one
+                candidates[u_candidate] += 1
+                # Candidate has been proposed by all its direct children?
+                if candidates[u_candidate] == len(u_candidate):
                     
-                    # Compute the component of the new added set
-                    joint_idx = ravel([Imap_inv[i] for i in super_set])
-                    for n in range(N):
-                        data_temp[:, joint_idx] = background[n, joint_idx]
-                        h_ij_z = h(data_temp)
-                        temp_h_replace[n] = h_ij_z
+                    # Compute the component H^u of the new candidate set
+                    H_u_candidate = _get_anchored_components_u(decomposition, h, u_candidate, Imap_inv, 
+                                                                np.arange(N), background, background)
                     
-                    # Reset the copied background
-                    data_temp[:,  joint_idx] = background[:,  joint_idx] 
-                    
-                    # Remove all contributions of subsets to get the interaction
-                    for subset in powerset(super_set):
-                        temp_h_replace -= decomposition[subset]
-                    
-                    # The component is essentially null so we do not add it
-                    if np.mean(temp_h_replace.mean(1)**2) > 1e-8 * variance:
-                        U.append(super_set)
-                        decomposition[super_set] = np.copy(temp_h_replace)
+                    # The component should not be null
+                    if np.mean(H_u_candidate.mean(1)**2) > 1e-8 * variance:
+                        U.append(u_candidate)
+                        decomposition[u_candidate] = H_u_candidate
+
+                        # Compute the Psi to decide if the node should be extended
+                        Psi_new = (-1)**len(u_candidate) * H_u_candidate.mean(0)
+                        Psi_new -= H_u_candidate.mean(1)
+                        Psi = np.append(Psi, np.mean(Psi_new**2))
 
                         # Update the loss
-                        h_proj += decomposition[super_set].mean(1)
+                        h_proj += decomposition[u_candidate].mean(1)
                         loss = np.mean( ( decomposition[()] - h_proj ) ** 2)
                         
-                        if loss / variance <= tolerance:
-                            break
-                        
-                        # Compute the psi to decide if we must explore the supersets
-                        # of the newly added set
-                        psi_ = (-1)**len(super_set) * decomposition[super_set].mean(0)
-                        psi_ -= decomposition[super_set].mean(1)
-                        psi = np.append(psi, np.mean(psi_**2))
     return decomposition
 
 

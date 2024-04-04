@@ -142,8 +142,7 @@ def setup_brute_force(foreground, background, Imap_inv, interactions, show_bar):
     # Setup Imap_inv
     Imap_inv, D, _ = check_Imap_inv(Imap_inv, d)
 
-    # The foreground need not have the same shape as the background when one is doing a simple PDP
-    one_group = False
+    # Several checks on the foreground data
     if foreground.ndim == 1:
         foreground = foreground.reshape((-1, 1))
     if D > 1:
@@ -153,11 +152,16 @@ def setup_brute_force(foreground, background, Imap_inv, interactions, show_bar):
     else:
         # The user is computing a PDP
         if foreground.shape[1] == len(Imap_inv[0]):
-            one_group = True
+            # To keep the API consistent we unfortunately have to
+            # pad out the foreground with zeros, even if a single
+            # PDP is requested.
+            foreground_pad = np.zeros((foreground.shape[0], d))
+            foreground_pad[:, Imap_inv[0]] = foreground
+            foreground = foreground_pad
         else:
             assert foreground.shape[1] == d, "When computing PDP, foreground must be a (Nf, d) or (Nf, group_size) dataset "
     
-    return foreground, Imap_inv, iterator_, one_group
+    return foreground, Imap_inv, iterator_
 
 
 
