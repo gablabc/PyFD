@@ -199,20 +199,33 @@ def bar(phis, feature_labels, threshold=None, xerr=None, absolute=False, ax=None
 
 
 
+def get_curr_axis(n_rows, n_cols, ax, iter):
+    if n_rows == 1:
+        if n_cols == 1:
+            curr_ax = ax
+        else:
+            curr_ax = ax[iter]
+    else:
+        if n_cols == 1:
+            curr_ax = ax[iter]
+        else:
+            curr_ax = ax[iter//n_cols][iter%n_cols]
+    return curr_ax
+
 
 def partial_dependence_plot(decomposition, foreground, background, features, idxs=None,
                             groups_method=None, rules=None, fd_trees_kwargs={}, centered=True,
-                            figsize=(24, 10), n_cols=5, plot_hist=False, normalize_y=True, alpha=0.01):
+                            figsize=None, n_cols=5, plot_hist=False, normalize_y=True, alpha=0.01):
     
-    # If no idx is provided, we plot all features
+    # If no idxs is provided, we plot all features
     if idxs is None:
         idxs = range(len(features))
         Imap_inv = deepcopy(features.Imap_inv)
     else:
         Imap_inv = deepcopy([features.Imap_inv[i] for i in idxs])
-    for idx in idxs:
-        assert len(Imap_inv[idx]) == 1, "No feature grouping in PDP plots"
-        Imap_inv[idx] = Imap_inv[idx][0]
+    for i in range(len(idxs)):
+        assert len(Imap_inv[i]) == 1, "No feature grouping in PDP plots"
+        Imap_inv[i] = Imap_inv[i][0]
     
     anchored = decomposition[(0,)].shape == (foreground.shape[0], background.shape[0])
     additive_keys = [(idx,) for idx in idxs]
@@ -226,7 +239,7 @@ def partial_dependence_plot(decomposition, foreground, background, features, idx
         y_min = min([decomposition[key].min() for key in additive_keys])
         y_max = max([decomposition[key].max() for key in additive_keys])
         importance = np.array([np.var(decomposition[key]) for key in additive_keys])
-    idxs_ordered = [idxs[i] for i in np.argsort(-importance)]
+    idxs_ordered = np.argsort(-importance)
 
     delta_y = (y_max-y_min)
     y_min = y_min - delta_y*0.01
@@ -238,17 +251,18 @@ def partial_dependence_plot(decomposition, foreground, background, features, idx
     else:
         n_rows = ceil(d / n_cols)
     _, ax = plt.subplots(n_rows, n_cols, figsize=figsize)
-    for iter, idx in enumerate(idxs_ordered):
-        curr_ax = ax[iter] if n_rows == 1 else ax[iter//n_cols][iter%n_cols]
+    for iter, i in enumerate(idxs_ordered):
+        # Get current axis to plot
+        curr_ax = get_curr_axis(n_rows, n_cols, ax, iter)
 
         # Key represents the name of the component
-        key = additive_keys[idx]
+        key = additive_keys[i]
         # To which column of X it corresponds
-        column = Imap_inv[idx]
+        column = Imap_inv[i]
         x_min = foreground[:, column].min()
         x_max = foreground[:, column].max()
         # What feature is being studied
-        feature = features.feature_objs[idx]
+        feature = features.feature_objs[idxs[i]]
 
         if plot_hist:
             # TODO plot better histograms when categorical or integer
@@ -325,7 +339,7 @@ def partial_dependence_plot(decomposition, foreground, background, features, idx
                 # Truncate names if too long
                 # if len(categories) > 5:
                 # categories = [name[:3] for name in categories]
-                rotation = 45
+                rotation = 90
             else:
                 categories = [False, True]
                 rotation = 0
@@ -341,17 +355,26 @@ def partial_dependence_plot(decomposition, foreground, background, features, idx
             curr_ax.set_ylim(y_min, y_max)
             if not iter%n_cols == 0:
                 curr_ax.yaxis.set_ticklabels([])
+    # Remove unused axes
+    iter += 1
+    while iter < n_rows * n_cols:
+        get_curr_axis(n_rows, n_cols, ax, iter).set_axis_off()
+        iter += 1
 
 
-
-def attrib_scatter_plot(decomposition, phis, foreground, features,
-                        normalize_y=True, groups=None, figsize=(24, 10), n_cols=5):
+def attrib_scatter_plot(decomposition, phis, foreground, features, idxs=None,
+                        normalize_y=True, groups=None, figsize=None, n_cols=5):
     
-    Imap_inv = deepcopy(features.Imap_inv)
-    for i in range(len(Imap_inv)):
-        assert len(Imap_inv[i]) == 1, "No feature grouping in scatter plots"
+    # If no idxs is provided, we plot all features
+    if idxs is None:
+        idxs = range(len(features))
+        Imap_inv = deepcopy(features.Imap_inv)
+    else:
+        Imap_inv = deepcopy([features.Imap_inv[i] for i in idxs])
+    for i in range(len(idxs)):
+        assert len(Imap_inv[i]) == 1, "No feature grouping in PDP plots"
         Imap_inv[i] = Imap_inv[i][0]
-    additive_keys = [(i,) for i in Imap_inv]
+    additive_keys = [(idx,) for idx in idxs]
     d = len(additive_keys)
     
     if groups is None:
@@ -376,15 +399,15 @@ def attrib_scatter_plot(decomposition, phis, foreground, features,
         assert len(phis) == n_groups
         is_shap_list = True
         is_anchored_shap = phis[0].ndim == 3
-        y_min = min([p.min() for p in phis])
-        y_max = max([p.max() for p in phis])
-        importance = np.max(np.stack([np.mean(p**2, axis=0) for p in phis]), axis=0)
+        y_min = min([p[..., idxs].min() for p in phis])
+        y_max = max([p[..., idxs].max() for p in phis])
+        importance = np.max(np.stack([np.mean(p[..., idxs]**2, axis=0) for p in phis]), axis=0)
     else:
         is_shap_list = False
         is_anchored_shap = phis.ndim == 3
-        y_min = phis.min()
-        y_max = phis.max()
-        importance = np.mean(phis**2, axis=0)
+        y_min = phis[..., idxs].min()
+        y_max = phis[..., idxs].max()
+        importance = np.mean(phis[..., idxs]**2, axis=0)
 
     delta_y = (y_max-y_min)
     y_min = y_min - delta_y*0.01
@@ -397,16 +420,17 @@ def attrib_scatter_plot(decomposition, phis, foreground, features,
     else:
         n_rows = ceil(d / n_cols)
     _, ax = plt.subplots(n_rows, n_cols, figsize=figsize)
-    for iter, idx in enumerate(order):
-        curr_ax = ax[iter] if n_rows == 1 else ax[iter//n_cols][iter%n_cols]
+    for iter, i in enumerate(order):
+        # Get axis to plot
+        curr_ax = get_curr_axis(n_rows, n_cols, ax, iter)
 
         # Key represents the name of the component
-        key = additive_keys[idx]
+        key = additive_keys[i]
         # To which column of X it corresponds
-        column = Imap_inv[idx]
+        column = Imap_inv[i]
         x_min = foreground[:, column].min()
         x_max = foreground[:, column].max()
-        feature = features.feature_objs[idx]
+        feature = features.feature_objs[idxs[i]]
 
         # For each group plot the anchored components in color
         for group_id in range(n_groups):
@@ -479,6 +503,11 @@ def attrib_scatter_plot(decomposition, phis, foreground, features,
             curr_ax.set_ylim(y_min, y_max)
             if not iter%n_cols == 0:
                 curr_ax.yaxis.set_ticklabels([])
+    # Remove unused axes
+    iter += 1
+    while iter < n_rows * n_cols:
+        get_curr_axis(n_rows, n_cols, ax, iter).set_axis_off()
+        iter += 1
 
 
 
