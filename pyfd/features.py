@@ -245,7 +245,7 @@ class Features(object):
                     space = free_space[j] - len(property) - 1
                 else:
                     space = 0
-                    property = property[:free_space]
+                    property = property[:free_space[j]-1]
                 print_res += " " + property + space * " " + "|"
             print_res += "\n"
         print_res += "---------------------------------------------------------------------------\n"

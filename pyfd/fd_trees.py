@@ -251,7 +251,7 @@ class FDTree(BaseEstimator, ABC):
 
     def predict(self, X_new):
         """ Return the group index of each instance """
-        groups = np.zeros(X_new.shape[0], dtype=np.int)
+        groups = np.zeros(X_new.shape[0], dtype=np.int32)
         self.group_idx = 0
         if self.n_groups == 1:
             return groups

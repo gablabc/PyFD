@@ -220,20 +220,26 @@ def get_components_brute_force(h, foreground, background, Imap_inv=None, interac
             unique, indices = unique_feature_values[key[0]]
             x_idxs = indices
             result = _get_anchored_components_u(decomposition, h, key, Imap_inv, x_idxs, foreground, background)
-            decomposition[key] = np.zeros((N_eval, N_ref))
+            if not anchored:
+                decomposition[key] = np.zeros((N_eval,))
+            else:
+                decomposition[key] = np.zeros((N_eval, N_ref))
             for i, value in enumerate(unique):
                 select = foreground[:, Imap_inv[key[0]][0]]==value
-                decomposition[key][select] = result[i]
+                # Interventional decompositions require averaging along axis=1
+                if not anchored:
+                    decomposition[key][select] = result[i].mean()
+                else:
+                    decomposition[key][select] = result[i]
         # Or Iterate over all N_eval foreground points
         else:
             x_idxs = np.arange(N_eval)
             result = _get_anchored_components_u(decomposition, h, key, Imap_inv, x_idxs, foreground, background)
-            decomposition[key] = result
-    # Interventional decompositions require averaging along axis=1
-    if not anchored:
-        for key, component in decomposition.items():
-            if len(key) >= 1:
-                decomposition[key] = component.mean(1)
+            # Interventional decompositions require averaging along axis=1
+            if not anchored:
+                decomposition[key] = result.mean(1)
+            else:
+                decomposition[key] = result
     return decomposition
 
 
