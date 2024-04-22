@@ -7,3 +7,5 @@
 pyfd.egg-info/
 *.so
 *.o
+docs/*
+build/*

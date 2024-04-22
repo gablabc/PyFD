@@ -8,10 +8,10 @@ import os
 from copy import deepcopy
 
 from sklearn.linear_model import LinearRegression, Ridge, LogisticRegression, PoissonRegressor
-from sklearn.pipeline import Pipeline
 
 from .utils import check_Imap_inv, get_Imap_inv_from_pipeline, get_leaf_box
 from .utils import ravel, powerset, setup_brute_force, setup_treeshap
+from .utils import safe_isinstance
 
 
 
@@ -56,7 +56,7 @@ def get_components_linear(h, foreground, background, Imap_inv=None):
 
     # Check model type, identify the ML task, and get average prediction
     is_pipeline = False
-    if type(h) == Pipeline:
+    if safe_isinstance(h, ["sklearn.pipeline.Pipeline", "imblearn.pipeline.Pipeline"]):
         model_type = type(h.steps[-1][1])
         is_pipeline = True
     else:
@@ -74,7 +74,11 @@ def get_components_linear(h, foreground, background, Imap_inv=None):
     # If h is a Pipeline whose last layer is a linear model, we propagate the foreground and background
     # up to that point and we compute the Imap_inv up to the linear layer
     if is_pipeline:
-        preprocessing = h[:-1]
+        # IMB pipelines can be problematic when the last step does sampling, and so does not have
+        # a transform method. A turnaround is to add a None step at the end.
+        preprocessing = deepcopy(h[:-1])
+        if safe_isinstance(h, "imblearn.pipeline.Pipeline"):
+            preprocessing.steps.append(['predictor', None])
         predictor = h[-1]
         background = preprocessing.transform(background)
         foreground = preprocessing.transform(foreground)

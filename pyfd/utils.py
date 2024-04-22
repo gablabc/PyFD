@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -14,6 +15,66 @@ from shap.explainers import Tree
 
 ADDITIVE_TRANSFORMS = [StandardScaler, MinMaxScaler, QuantileTransformer,
                        FunctionTransformer, KBinsDiscretizer, SplineTransformer, OneHotEncoder]
+
+
+
+def safe_isinstance(obj, class_path_str):
+    """
+    Taken from https://github.com/shap/shap/blob/master/shap/utils/_general.py
+    
+    Acts as a safe version of isinstance without having to explicitly
+    import packages which may not exist in the users environment.
+
+    Checks if obj is an instance of type specified by class_path_str.
+
+    Parameters
+    ----------
+    obj: Any
+        Some object you want to test against
+    class_path_str: str or list
+        A string or list of strings specifying full class paths
+        Example: `sklearn.ensemble.RandomForestRegressor`
+
+    Returns
+    -------
+    bool: True if isinstance is true and the package exists, False otherwise
+
+    """
+    if isinstance(class_path_str, str):
+        class_path_strs = [class_path_str]
+    elif isinstance(class_path_str, list) or isinstance(class_path_str, tuple):
+        class_path_strs = class_path_str
+    else:
+        class_path_strs = ['']
+
+    # try each module path in order
+    for class_path_str in class_path_strs:
+        if "." not in class_path_str:
+            raise ValueError("class_path_str must be a string or list of strings specifying a full \
+                module path to a class. Eg, 'sklearn.ensemble.RandomForestRegressor'")
+
+        # Splits on last occurrence of "."
+        module_name, class_name = class_path_str.rsplit(".", 1)
+
+        # here we don't check further if the model is not imported, since we shouldn't have
+        # an object of that types passed to us if the model the type is from has never been
+        # imported. (and we don't want to import lots of new modules for no reason)
+        if module_name not in sys.modules:
+            continue
+
+        module = sys.modules[module_name]
+
+        #Get class
+        _class = getattr(module, class_name, None)
+
+        if _class is None:
+            continue
+
+        if isinstance(obj, _class):
+            return True
+
+    return False
+
 
 
 def powerset(iterable):
@@ -57,63 +118,63 @@ def get_Imap_inv_from_pipeline(Imap_inv, pipeline):
     Imap_inv_return = deepcopy(Imap_inv)
     # Iterate over the whole pipeline
     for layer in pipeline:
-        # Only certain layers are supported
-        assert type(layer) in ADDITIVE_TRANSFORMS or type(layer) == ColumnTransformer
+        # Only certain layers are supported, other layers are assumed to be ``passthrough''
+        if type(layer) in ADDITIVE_TRANSFORMS or type(layer) == ColumnTransformer:
 
-        # Compute the list of transformers and the columns they act on
-        if type(layer) in [SplineTransformer, OneHotEncoder]:
-            transformers = [('layer', layer, range(layer.n_features_in_))]
-        elif type(layer) == KBinsDiscretizer and layer.encode in ['onehot', 'onehot-dense']:
-            transformers = [('layer', layer, range(layer.n_features_in_))]
-        elif type(layer) == ColumnTransformer:
-            transformers = layer.transformers_
-        else:
-            transformers = None
+            # Compute the list of transformers and the columns they act on
+            if type(layer) in [SplineTransformer, OneHotEncoder]:
+                transformers = [('layer', layer, range(layer.n_features_in_))]
+            elif type(layer) == KBinsDiscretizer and layer.encode in ['onehot', 'onehot-dense']:
+                transformers = [('layer', layer, range(layer.n_features_in_))]
+            elif type(layer) == ColumnTransformer:
+                transformers = layer.transformers_
+            else:
+                transformers = None
 
-        # If transformers increase the number of columns, we must change Imap_inv_copy
-        # This id done by composing Imap_inv_copy with Imap_inv_layer
-        if transformers is not None:
-            # We compute the Imap_inv relative to this layer
-            Imap_inv_layer = [[] for _ in range(layer.n_features_in_)]
+            # If transformers increase the number of columns, we must change Imap_inv_copy
+            # This id done by composing Imap_inv_copy with Imap_inv_layer
+            if transformers is not None:
+                # We compute the Imap_inv relative to this layer
+                Imap_inv_layer = [[] for _ in range(layer.n_features_in_)]
 
-            curr_idx = 0
-            for transformer in transformers:
-                # Splines maps a column to dim columns
-                if type(transformer[1]) == SplineTransformer:            
-                    degree = transformer[1].degree
-                    n_knots = transformer[1].n_knots
-                    dim = n_knots + degree - 2 + int(transformer[1].include_bias)
-                    # Iterate over all columns the transformer acts upon
-                    for i in transformer[2]:
-                        Imap_inv_layer[i] = list(range(curr_idx, curr_idx+dim))
-                        curr_idx += dim
-                # OHE maps a column to n_categories columns
-                elif type(transformer[1]) == OneHotEncoder:
-                    # Iterate over all columns the transformer acts upon
-                    for idx, i in enumerate(transformer[2]):
-                        n_categories = len(transformer[1].categories_[idx])
-                        Imap_inv_layer[i] = list(range(curr_idx, curr_idx+n_categories))
-                        curr_idx += n_categories
-                # BinsDiscretizer maps a column to n_bins columns
-                elif type(transformer[1]) == KBinsDiscretizer and \
-                          transformer[1].encode in ['onehot', 'onehot-dense']:
-                    # Iterate over all columns the transformer acts upon
-                    for idx, i in enumerate(transformer[2]):
-                        n_bins = transformer[1].n_bins_[idx]
-                        Imap_inv_layer[i] = list(range(curr_idx, curr_idx+n_bins))
-                        curr_idx += n_bins
-                # Other transformers map a column to a column
-                else:
-                    for i in transformer[2]:
-                        Imap_inv_layer[i] = [curr_idx]
-                        curr_idx += 1
+                curr_idx = 0
+                for transformer in transformers:
+                    # Splines maps a column to dim columns
+                    if type(transformer[1]) == SplineTransformer:            
+                        degree = transformer[1].degree
+                        n_knots = transformer[1].n_knots
+                        dim = n_knots + degree - 2 + int(transformer[1].include_bias)
+                        # Iterate over all columns the transformer acts upon
+                        for i in transformer[2]:
+                            Imap_inv_layer[i] = list(range(curr_idx, curr_idx+dim))
+                            curr_idx += dim
+                    # OHE maps a column to n_categories columns
+                    elif type(transformer[1]) == OneHotEncoder:
+                        # Iterate over all columns the transformer acts upon
+                        for idx, i in enumerate(transformer[2]):
+                            n_categories = len(transformer[1].categories_[idx])
+                            Imap_inv_layer[i] = list(range(curr_idx, curr_idx+n_categories))
+                            curr_idx += n_categories
+                    # BinsDiscretizer maps a column to n_bins columns
+                    elif type(transformer[1]) == KBinsDiscretizer and \
+                            transformer[1].encode in ['onehot', 'onehot-dense']:
+                        # Iterate over all columns the transformer acts upon
+                        for idx, i in enumerate(transformer[2]):
+                            n_bins = transformer[1].n_bins_[idx]
+                            Imap_inv_layer[i] = list(range(curr_idx, curr_idx+n_bins))
+                            curr_idx += n_bins
+                    # Other transformers map a column to a column
+                    else:
+                        for i in transformer[2]:
+                            Imap_inv_layer[i] = [curr_idx]
+                            curr_idx += 1
 
-            # We map Imap_inv through the Imap_inv_layer
-            for i, group in enumerate(Imap_inv_copy):
-                Imap_inv_return[i] = []
-                for j in group:
-                    Imap_inv_return[i] += Imap_inv_layer[j]
-            Imap_inv_copy = deepcopy(Imap_inv_return)
+                # We map Imap_inv through the Imap_inv_layer
+                for i, group in enumerate(Imap_inv_copy):
+                    Imap_inv_return[i] = []
+                    for j in group:
+                        Imap_inv_return[i] += Imap_inv_layer[j]
+                Imap_inv_copy = deepcopy(Imap_inv_return)
     
     return Imap_inv_return
 
@@ -168,8 +229,12 @@ def setup_brute_force(foreground, background, Imap_inv, interactions, show_bar):
 def setup_treeshap(Imap_inv, foreground, background, model):
 
     # Map Imap_inv through the pipeline
-    if type(model) == Pipeline:
-        preprocessing = model[:-1]
+    if safe_isinstance(model, ["sklearn.pipeline.Pipeline", "imblearn.pipeline.Pipeline"]):
+        # IMB pipelines can be problematic when the last step does sampling, and so does not have
+        # a transform method. A turnaround is to add a None step at the end.
+        preprocessing = deepcopy(model[:-1])
+        if safe_isinstance(model, "imblearn.pipeline.Pipeline"):
+            preprocessing.steps.append(['predictor', None])
         model = model[-1]
         background = preprocessing.transform(background)
         foreground = preprocessing.transform(foreground)
