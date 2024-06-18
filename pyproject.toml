@@ -18,7 +18,8 @@ dependencies = [
   'pandas',
   'tqdm>=4.27.0',
   'shap',
-  'xgboost'
+  'xgboost',
+  'interpret-core'
 ]
 dynamic = ["version"]
 

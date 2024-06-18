@@ -180,6 +180,44 @@ def get_Imap_inv_from_pipeline(Imap_inv, pipeline):
 
 
 
+def setup_linear(h, foreground, background, Imap_inv, acceptable_types):
+    # Setup
+    Imap_inv, D, _ = check_Imap_inv(Imap_inv, background.shape[1])
+    if D > 1:
+        assert foreground.shape[1] > 1, "When computing several h components, foreground must be a dataset"
+    else:
+        # If a line is provided we can compute the PDP
+        if foreground.ndim == 1:
+            foreground = foreground.reshape((-1, 1))
+
+    # Check model type, identify the ML task, and get average prediction
+    is_pipeline = False
+    if safe_isinstance(h, ["sklearn.pipeline.Pipeline", "imblearn.pipeline.Pipeline"]):
+        model_type = type(h.steps[-1][1])
+        is_pipeline = True
+    else:
+        model_type = type(h)
+    assert model_type in acceptable_types, "The predictor is not of the right class for this function"
+
+    # If h is a Pipeline whose last layer is a EBM, we propagate the foreground and background
+    # up to that point and we compute the Imap_inv up to the EBM layer
+    if is_pipeline:
+        # IMB pipelines can be problematic when the last step does sampling, and so does not have
+        # a transform method. A turnaround is to add a None step at the end.
+        preprocessing = deepcopy(h[:-1])
+        if safe_isinstance(h, "imblearn.pipeline.Pipeline"):
+            preprocessing.steps.append(['predictor', None])
+        predictor = h[-1]
+        background = preprocessing.transform(background)
+        foreground = preprocessing.transform(foreground)
+        Imap_inv = get_Imap_inv_from_pipeline(Imap_inv, preprocessing)
+    else:
+        predictor = h
+
+    return predictor, foreground, background, Imap_inv
+
+
+
 def setup_brute_force(foreground, background, Imap_inv, interactions, show_bar):
     d = background.shape[1]
     if type(interactions) == int:

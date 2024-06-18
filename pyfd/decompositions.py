@@ -9,18 +9,16 @@ from copy import deepcopy
 
 from sklearn.linear_model import LinearRegression, Ridge, LogisticRegression, PoissonRegressor
 
-from .utils import check_Imap_inv, get_Imap_inv_from_pipeline, get_leaf_box
-from .utils import ravel, powerset, setup_brute_force, setup_treeshap
-from .utils import safe_isinstance
+from .utils import check_Imap_inv, get_leaf_box, ravel, powerset
+from .utils import setup_linear, setup_brute_force, setup_treeshap
 
 
 
 #######################################################################################
-#                                       Linear
+#                                 Linear & Additive
 #######################################################################################
 
 
-SKLEARN_LINEAR = [LinearRegression, Ridge, LogisticRegression, PoissonRegressor]
 
 def get_components_linear(h, foreground, background, Imap_inv=None):
     """
@@ -45,56 +43,90 @@ def get_components_linear(h, foreground, background, Imap_inv=None):
         is a (Nf,) np.ndarray.
     """
 
-    # Setup
-    Imap_inv, D, _ = check_Imap_inv(Imap_inv, background.shape[1])
-    if D > 1:
-        assert foreground.shape[1] > 1, "When computing several h components, foreground must be a dataset"
-    else:
-        # If a line is provided we can compute the PDP
-        if foreground.ndim == 1:
-            foreground = foreground.reshape((-1, 1))
+    SKLEARN_LINEAR = [LinearRegression, Ridge, LogisticRegression, PoissonRegressor]
 
-    # Check model type, identify the ML task, and get average prediction
-    is_pipeline = False
-    if safe_isinstance(h, ["sklearn.pipeline.Pipeline", "imblearn.pipeline.Pipeline"]):
-        model_type = type(h.steps[-1][1])
-        is_pipeline = True
-    else:
-        model_type = type(h)
-    assert model_type in SKLEARN_LINEAR, "The predictor must be a linear/additive model"
-    # For regression we explain the output
-    if model_type in [LinearRegression, Ridge, PoissonRegressor]:
-        h_emptyset_z = h.predict(background)
+    # Setup
+    predictor, foreground, background, Imap_inv = setup_linear(h, foreground, background, Imap_inv, SKLEARN_LINEAR)
+    if type(predictor) in [LinearRegression, Ridge, PoissonRegressor]:
+        h_emptyset_z = predictor.predict(background)
     # FOr classification we explain the logit
     else:
-        h_emptyset_z = h.decision_function(background)
+        h_emptyset_z = predictor.decision_function(background)
     decomposition = {}
     decomposition[()] = h_emptyset_z.mean()
 
-    # If h is a Pipeline whose last layer is a linear model, we propagate the foreground and background
-    # up to that point and we compute the Imap_inv up to the linear layer
-    if is_pipeline:
-        # IMB pipelines can be problematic when the last step does sampling, and so does not have
-        # a transform method. A turnaround is to add a None step at the end.
-        preprocessing = deepcopy(h[:-1])
-        if safe_isinstance(h, "imblearn.pipeline.Pipeline"):
-            preprocessing.steps.append(['predictor', None])
-        predictor = h[-1]
-        background = preprocessing.transform(background)
-        foreground = preprocessing.transform(foreground)
-        Imap_inv = get_Imap_inv_from_pipeline(Imap_inv, preprocessing)
-    else:
-        predictor = h
-
-    w = predictor.coef_.ravel()
-
     # Compute the additive components
-    for j in range(D):
+    w = predictor.coef_.ravel()
+    for j in range(len(Imap_inv)):
         Imap_inv_j = np.array(Imap_inv[j])
         # TODO this breaks if the processed data is sparse
         decomposition[(j,)] = np.sum((foreground[:, Imap_inv_j] - background[:, Imap_inv_j].mean(0)) * w[Imap_inv_j], axis=1)
     
     return decomposition
+
+
+
+
+def get_components_ebm(h, foreground, background, Imap_inv=None):
+    """
+    Compute the Interventional Decomposition of an Explainable Boosting Machine (EBM)
+
+    Parameters
+    ----------
+    h : model X -> R
+        A EBM model from interpret or a Pipeline with a EBM as the last layer.
+    foreground : (Nf, d) np.ndarray
+        The data points at which to evaluate the decomposition.
+    background : (Nb, d) np.ndarray
+        The data points at which to anchor the decomposition.
+    Imap_inv : List(List(int)), default=None
+        A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
+        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature.
+    
+    Returns
+    -------
+    decomposition : dict{Tuple: np.ndarray}
+        The various components of the decomposition indexed via their feature subset e.g. `decomposition[(0,)]`
+        is a (Nf,) np.ndarray.
+    """
+    from interpret.glassbox._ebm._bin import ebm_predict_scores, ebm_eval_terms
+    from interpret.glassbox import ExplainableBoostingRegressor, ExplainableBoostingClassifier
+    
+    EBM = [ExplainableBoostingRegressor, ExplainableBoostingClassifier]
+
+    # Setup
+    predictor, foreground, background, Imap_inv = setup_linear(h, foreground, background, Imap_inv, EBM)
+
+    # For EBMs we map feature j to its shape function h_j
+    # Temporary !!!!! Eventually we will add interaction terms to the components
+    assert max([len(term) for term in predictor.term_features_]) == 1, "For now PyFD only supports additive EBMs"
+    preds_background = ebm_predict_scores(
+            background, background.shape[0],
+            predictor.feature_names_in_, predictor.feature_types_in_,
+            predictor.bins_, predictor.intercept_, predictor.term_scores_, predictor.term_features_
+    )
+    background = ebm_eval_terms(
+            background, background.shape[0], 1, 
+            predictor.feature_names_in_, predictor.feature_types_in_,
+            predictor.bins_, predictor.term_scores_, predictor.term_features_
+    )
+    foreground = ebm_eval_terms(
+            foreground, foreground.shape[0], 1,
+            predictor.feature_names_in_, predictor.feature_types_in_,
+            predictor.bins_, predictor.term_scores_, predictor.term_features_
+    )
+
+    decomposition = {}
+    decomposition[()] = preds_background.mean()
+
+    # Compute the additive components
+    for j in range(len(Imap_inv)):
+        Imap_inv_j = np.array(Imap_inv[j])
+        decomposition[(j,)] = np.sum((foreground[:, Imap_inv_j] - background[:, Imap_inv_j].mean(0)), axis=1)
+    
+    return decomposition
+
+
 
 
 #######################################################################################
