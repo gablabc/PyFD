@@ -555,20 +555,23 @@ def get_components_tree(model, foreground, background, Imap_inv=None, anchored=F
 
 
 
-def get_PDP_PFI_importance(decomposition, groups=None, return_keys=False, show_bar=False):
+def get_PDP_PFI_importance(decomposition, groups=None, return_keys=False, variance=False, show_bar=False):
     """
     Compute PDP and PFI feature importance given an anchored decomposition
 
     Parameters
     ----------
     decomposition : dict{Tuple: np.ndarray}
-        An anchored decomposition with foreground=background so that `decomposition[(0,)].shape = (N, N)`
+        An anchored decomposition with foreground=background so that `decomposition[(0,)].shape = (N, N)`.
     groups : (N,) np.ndarray, default=None
         An array of N integers (values in {0, 1, 2, n_groups-1}) representing the group index of each datum.
     return_keys : bool, default=False
-        whether or not to return the additive keys associated with each interaction index
+        whether or not to return the additive keys associated with each interaction index.
+    variance : bool, default=False
+        return the variance-based importance metrics PDP-Variance and Marginal-Sobol. Both of which are inviariant
+        to the correlation between feature j and the remaining features.
     show_bar : bool, default=True
-        Show the progress bar
+        Show the progress bar.
 
     Returns
     -------
@@ -604,8 +607,12 @@ def get_PDP_PFI_importance(decomposition, groups=None, return_keys=False, show_b
         I_PDP = np.zeros(D)
         I_PFI = np.zeros(D)
         for d in tqdm(range(D), desc="PDP/PFI Importance", disable=not show_bar):
-            I_PDP[d] = np.mean(decomposition[additive_keys[d]].mean(1)**2)
-            I_PFI[d] = np.mean(decomposition[additive_keys[d]].mean(0)**2)
+            if variance:
+                I_PDP[d] = decomposition[additive_keys[d]].mean(1).var()
+                I_PFI[d] = decomposition[additive_keys[d]].var(0).mean()
+            else:
+                I_PDP[d] = np.mean(decomposition[additive_keys[d]].mean(1)**2)
+                I_PFI[d] = np.mean(decomposition[additive_keys[d]].mean(0)**2)
     # Separate feature importance for each group
     else:
         I_PDP = np.zeros((n_groups, D))
@@ -616,6 +623,12 @@ def get_PDP_PFI_importance(decomposition, groups=None, return_keys=False, show_b
                 H = decomposition[additive_keys[d]][select, select.T]
                 I_PDP[group_id, d] = np.mean(H.mean(1)**2)
                 I_PFI[group_id, d] = np.mean(H.mean(0)**2)
+                if variance:
+                    I_PDP[group_id, d] = H.mean(1).var()
+                    I_PFI[group_id, d] = H.var(0).mean()
+                else:
+                    I_PDP[group_id, d] = np.mean(H.mean(1)**2)
+                    I_PFI[group_id, d] = np.mean(H.mean(0)**2)
     
     if return_keys:
         return I_PDP, I_PFI, additive_keys
