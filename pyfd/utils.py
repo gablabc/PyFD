@@ -241,14 +241,12 @@ def setup_brute_force(foreground, background, Imap_inv, interactions, show_bar):
     # Setup Imap_inv
     Imap_inv, D, _ = check_Imap_inv(Imap_inv, d)
 
-    # Several checks on the foreground data
+    # 1D foregrounds are reshaped as (N_eval, 1) arrays
     if foreground.ndim == 1:
         foreground = foreground.reshape((-1, 1))
-    if D > 1:
-        assert foreground.shape[1] == d, "When computing several h components, foreground must be a (Nf, d) dataset"
-    elif interactions > 1:
-        assert foreground.shape[1] == d, "When computing interactions, foreground must be a (Nf, d) dataset"
-    else:
+    
+    # Process foreground differently when we have one feature
+    if D == 1:
         # The user is computing a PDP
         if foreground.shape[1] == len(Imap_inv[0]):
             # To keep the API consistent we unfortunately have to
@@ -259,6 +257,8 @@ def setup_brute_force(foreground, background, Imap_inv, interactions, show_bar):
             foreground = foreground_pad
         else:
             assert foreground.shape[1] == d, "When computing PDP, foreground must be a (Nf, d) or (Nf, group_size) dataset "
+    else:
+        assert foreground.shape[1] == d, "When computing several h components, foreground must be a (Nf, d) dataset"
     
     return foreground, Imap_inv, iterator_
 
