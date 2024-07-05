@@ -132,7 +132,7 @@ def get_Imap_inv_from_pipeline(Imap_inv, pipeline):
                 transformers = None
 
             # If transformers increase the number of columns, we must change Imap_inv_copy
-            # This id done by composing Imap_inv_copy with Imap_inv_layer
+            # This is done by composing Imap_inv_copy with Imap_inv_layer
             if transformers is not None:
                 # We compute the Imap_inv relative to this layer
                 Imap_inv_layer = [[] for _ in range(layer.n_features_in_)]
@@ -199,8 +199,8 @@ def setup_linear(h, foreground, background, Imap_inv, acceptable_types):
         model_type = type(h)
     assert model_type in acceptable_types, "The predictor is not of the right class for this function"
 
-    # If h is a Pipeline whose last layer is a EBM, we propagate the foreground and background
-    # up to that point and we compute the Imap_inv up to the EBM layer
+    # If h is a Pipeline whose last layer is a Linear/EBM layer, we propagate the foreground and background
+    # up to that point and we compute the Imap_inv up to the Linear/EBM layer
     if is_pipeline:
         # IMB pipelines can be problematic when the last step does sampling, and so does not have
         # a transform method. A turnaround is to add a None step at the end.
@@ -208,6 +208,15 @@ def setup_linear(h, foreground, background, Imap_inv, acceptable_types):
         if safe_isinstance(h, "imblearn.pipeline.Pipeline"):
             preprocessing.steps.append(['predictor', None])
         predictor = h[-1]
+
+        # If a PDP is computed, we must pad the foreground so
+        # that it can be fed to the pipeline
+        if not foreground.shape[1] == preprocessing.n_features_in_:
+            foreground_pad = np.tile(background[0], (foreground.shape[0], 1))
+            foreground_pad[:, Imap_inv[0]] = foreground
+            foreground = foreground_pad
+
+        # Pass the foreground and background through the pipeline
         background = preprocessing.transform(background)
         foreground = preprocessing.transform(foreground)
         Imap_inv = get_Imap_inv_from_pipeline(Imap_inv, preprocessing)

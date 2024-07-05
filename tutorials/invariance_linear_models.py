@@ -15,7 +15,7 @@ from pyfd.decompositions import get_components_linear
 # We will start with the simplest model type : linear models 
 # $h(x) = \omega_0 + \sum_{j=1}^d \omega_j x_j$,
 # where $\omega_0$ is called the bias and $\omega_j$ are called the weights.
-# Here is how you can fit and visualise a Linear Regression on a 1D toy dataset
+# Here is how you can fit and visualize a Linear Regression on a 1D toy dataset
 # %%
 X = np.random.uniform(1, 2, size=(100, 1))
 x_explain = np.array([1.1])
@@ -39,7 +39,7 @@ plt.show()
 # You might be tempted to interpret the value $\omega \,x_\text{explain}$ as the importance of $x_\text{explain}$ 
 # for the prediction. This yields
 # %%
-print(f"Local Attribution of x_explain : {float(model.coef_[0]*x_explain):.2f}")
+print(f"Local Attribution of x_explain : {float(model.coef_[0]*x_explain[0]):.2f}")
 # %% [markdown]
 # But if we center the dataset, then we get an explanation with a completely different sign!
 # %%
@@ -62,7 +62,7 @@ plt.xlabel("x")
 plt.ylabel("y")
 plt.show()
 
-print(f"Local Attribution of x_explain_ : {float(model_.coef_[0]*x_explain_):.2f}")
+print(f"Local Attribution of x_explain_ : {float(model_.coef_[0]*x_explain_[0]):.2f}")
 
 # %% [markdown]
 # What is happening here? The issue is that the importance $\omega x_\text{explain}$ is not
@@ -83,17 +83,17 @@ print(f"Local Attribution of x_explain_ : {float(model_.coef_[0]*x_explain_):.2f
 foreground = x_explain.reshape((1, -1))
 background = X
 decomposition = get_components_linear(model, foreground, background)
-print(f"Local Attribution of x_explain : {float(decomposition[(0,)]):.2f}")
+print(f"Local Attribution of x_explain : {decomposition[(0,)][0]:.2f}")
 
 # Standardized data
 foreground = x_explain_.reshape((1, -1))
 background = X_
 decomposition = get_components_linear(model_, foreground, background)
-print(f"Local Attribution of x_explain_ : {float(decomposition[(0,)]):.2f}")
+print(f"Local Attribution of x_explain_ : {decomposition[(0,)][0]:.2f}")
 
 # %% [markdown]
 # ## Spline Models
-# Let us complexity the problem so that a linear model will not be adequate.
+# Let us complexity the problem so that a linear model is no longer adequate.
 # %%
 y = np.log(X-0.99).ravel() + 0.1 * np.random.normal(size=(100,))
 plt.figure()
@@ -153,14 +153,14 @@ background = X
 model_1 = Pipeline([('spline', SplineTransformer(include_bias=True)), 
                     ('predictor', LinearRegression(fit_intercept=False)) ]).fit(X, y)
 decomp_1 = get_components_linear(model_1, foreground, background)
-print(f"Local Attribution of x_explain : {float(decomp_1[(0,)]):.2f}")
+print(f"Local Attribution of x_explain : {decomp_1[(0,)][0]:.2f}")
 
 # %%
 # Option 2
 model_2 = Pipeline([('spline', SplineTransformer(include_bias=False)), 
                     ('predictor', LinearRegression(fit_intercept=True)) ]).fit(X, y)
 decomp_2 = get_components_linear(model_2, foreground, background)
-print(f"Local Attribution of x_explain : {float(decomp_2[(0,)]):.2f}")
+print(f"Local Attribution of x_explain : {decomp_2[(0,)][0]:.2f}")
 
 # %%
 

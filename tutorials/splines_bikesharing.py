@@ -27,6 +27,7 @@ setup_pyplot_font(20)
 # - Encode `temp` and `hum` with splines.
 # %%
 X, y, features = get_data_bike()
+features.summary()
 d = len(features)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 features.feature_objs[1].cats = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]
@@ -78,10 +79,10 @@ plt.show()
 # Pickle the model
 dump(model, os.path.join("models", "bike_splines.joblib"))
 
-# # %% [markdown]
-# # Here we load the model. On subsequent reruns of the script,
-# # you do not need to retrain the model and can simply start by running
-# # this cell.
+# %% [markdown]
+# Here we load the model. On subsequent reruns of the script,
+# you do not need to retrain the model and can simply start by running
+# this cell.
 # %%
 # Load the model
 model = load(os.path.join("models", "bike_splines.joblib"))
@@ -120,6 +121,22 @@ for idx in range(0, 20, 2):
     plt.title(f"Target {y[idx]} Prediction {pred[0]:.3f}")
     plt.show()
 
+# %% [markdown]
+# The partial dependence plots shown earlier are
+# evaluated on the distribution on datapoints. To get
+# higher-resolution plots, it is also possible to 
+# define the foreground as a `np.linspace`.
+# %%
+# We study himidity
+feature_idx = 8
+foreground = np.linspace(0, 1, 100)
+one_component = get_components_linear(model, foreground, background, Imap_inv=[[8]])
+plt.figure()
+plt.plot(foreground, one_component[(0,)], 'k-o')
+plt.xlabel("humidity")
+plt.ylabel("PDP")
+plt.grid('on')
+plt.show()
 
 # %%[markdown]
 ## Global Feature Importance
