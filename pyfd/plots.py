@@ -188,7 +188,7 @@ def bar(phis, feature_labels, threshold=None, xerr=None, absolute=False, ax=None
         ax.axhline(i, color="k", lw=0.5, alpha=0.5, zorder=-1)
 
     xmin,xmax = ax.get_xlim()
-    ymin,ymax = ax.get_ylim()
+    ax.set_ylim(-0.5, num_features-0.5)
     
     if negative_phis:
         ax.set_xlim(xmin - (xmax-xmin)*0.05, xmax + (xmax-xmin)*0.05)
@@ -549,12 +549,11 @@ def plot_interaction(i, j, background, Phis, features):
         plt.scatter(background[:, i],
                     background[:, j], c=2*Phis[:, i, j], 
                     cmap='seismic', alpha=0.75)
+        plt.xlabel(feature_i.name)
         plt.ylabel(feature_j.name)
-        plt.xlabel(feature_j.name)
         plt.colorbar()
     if feature_i.type == "ordinal":
-        plt.xticks(np.arange(len(feature_i.cats)),
-                   feature_i.cats)
+        plt.xticks(np.arange(len(feature_i.cats)), feature_i.cats)
     # if features.types[j] == "ordinal":
     #    plt.yticks(np.arange(len(features.maps[j].cats)),
     #                features.maps[j].cats)
@@ -594,7 +593,7 @@ def interactions_heatmap(Phis, features_names, threshold=0.0005):
 
 
 def decomposition_graph(decomposition, feature_names):
-        
+    
     def interpolate_rgb(rgb_list_1, rgb_list_2, interp):
         """ Linear interpolation interp * rbg_1 + (1 - interp) * rbg_2 """
         out = ''
