@@ -47,9 +47,10 @@ def get_components_linear(h, foreground, background, Imap_inv=None):
 
     # Setup
     predictor, foreground, background, Imap_inv = setup_linear(h, foreground, background, Imap_inv, SKLEARN_LINEAR)
+    # For regression we explain the direct output
     if type(predictor) in [LinearRegression, Ridge, PoissonRegressor]:
         h_emptyset_z = predictor.predict(background)
-    # FOr classification we explain the logit
+    # For classification we explain the logit
     else:
         h_emptyset_z = predictor.decision_function(background)
     decomposition = {}
@@ -152,7 +153,7 @@ def _get_anchored_components_u(decomposition, h, key, Imap_inv, x_idxs, foregrou
         the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature.
     x_idxs : List(Int)
         The index of all foreground points at which to evaluate the decomposition. This parameter is useful
-        when there are repetitions in feature values and so it is not necessary to loop over all background
+        when there are repetitions in feature values and so it is not necessary to loop over all foreground
         points. 
     foreground : (Nf, d) np.ndarray
         The data points at which to evaluate the decomposition.
@@ -325,7 +326,7 @@ def get_components_adaptive(h, background, Imap_inv=None, tolerance=0.05, show_b
             assert (i,) in precompute.keys()
             assert precompute[(i,)].shape == (N, N)
         decomposition = deepcopy(precompute)
-        
+    
     # Setup for lattice space search
     variance = decomposition[()].var()
     h_proj = get_h_add(decomposition, anchored=True).mean(1)
@@ -562,7 +563,7 @@ def get_PDP_PFI_importance(decomposition, groups=None, return_keys=False, varian
     Parameters
     ----------
     decomposition : dict{Tuple: np.ndarray}
-        An anchored decomposition with foreground=background so that `decomposition[(0,)].shape = (N, N)`.
+        An anchored decomposition so that `decomposition[(0,)].shape = (Nf, Nb)`.
     groups : (N,) np.ndarray, default=None
         An array of N integers (values in {0, 1, 2, n_groups-1}) representing the group index of each datum.
     return_keys : bool, default=False
@@ -591,12 +592,13 @@ def get_PDP_PFI_importance(decomposition, groups=None, return_keys=False, varian
     D = len(additive_keys)
     shape_decomposition = decomposition[additive_keys[0]].shape
     assert len(shape_decomposition) == 2, "The decomposition must be anchored"
-    assert shape_decomposition[0] == shape_decomposition[1], "The decomposition must have foreground=background"
+    # assert shape_decomposition[0] == shape_decomposition[1], "The decomposition must have foreground=background"
     
     # Assert if explanations are regional
     if groups is None:
         n_groups = 1
     elif isinstance(groups, np.ndarray):
+        assert shape_decomposition[0] == shape_decomposition[1], "Must have foreground=background when passing groups"
         n_groups = groups.max() + 1
         assert shape_decomposition[0] == len(groups), "Each foreground element must have a group index"
     else:

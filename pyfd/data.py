@@ -774,6 +774,5 @@ if __name__ == "__main__":
         X, y, features = import_fun()
         print(X.shape)
         print(y.shape)
-        print(features.names())
-        print(features.types)
+        features.summary()
         print("\n\n")
