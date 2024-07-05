@@ -29,7 +29,7 @@ setup_pyplot_font(8)
 
 # `use_target_encoder=True` will ordinally encode categorical variables in terms of average target value
 X, y, features = get_data_marketing(use_target_encoder=True)
-print(features.summary())
+features.summary()
 
 # %% [markdown]
 # ## Fitting model
@@ -148,7 +148,7 @@ print(Phis.shape)
 # pairwise interaction strenght among the features
 # %%
 
-interactions_heatmap(Phis, features.print_names())
+interactions_heatmap(Phis, features.names())
 plt.show()
 
 # %% [markdown]
@@ -160,17 +160,16 @@ plt.show()
 # %%
 # Grouping day and month
 grouped_features = features.group([[5, 6]])
-print(grouped_features.summary())
+grouped_features.summary()
 
 # %% [markdown]
 # Note that we have a new feature `day:month` representing the day and month
 # for a specific datum. The column `I^-1({i})` in the summary table represents
-# the pre-image of each feature i.e. what columns of *X* map to each feature. Here
-# we have `I^-1({i})=[5, 6]` because columns 5 and 6 both encode the feature `day:month`.
-# The `Imap_inv` attribute must be passed to the the decomposition algorithm to
-# decompose the model $h$ while treating columns 5 and 6 as a single feature.
+# the pre-image of each feature i.e. what columns of *X* map to each feature. 
+# Here, we have `I^-1({14})=[5, 6]` because columns 5 and 6 both encode the 
+# feature `day:month`. The `Imap_inv` must be passed to the decomposition algorithms 
+# to decompose the model $h$ while treating columns 5 and 6 as a single feature.
 # %%
-print(grouped_features.Imap_inv)
 
 background = X_train[:5000]
 foreground = X_test
@@ -207,7 +206,7 @@ from pyfd.plots import bar, COLORS, plot_legend
 
 # Compute an anchored decomposition requires smaller backgrounds
 # FD-Trees require background=foreground
-background = X_train[:1000]
+background = X_train[:1500]
 # No grouping
 decomp_sym = get_components_tree(model, background, background, 
                                         anchored=True)
@@ -227,14 +226,14 @@ rules = tree.rules(use_latex=True)
 # %% [markdown]
 # The split is made along the feature `contact` that interacts 
 # with `month`. Since the LoA has been significantly reduced
-# (it went from 60% to 10%) we have a higher confidence that
+# (it went from 30% to 13%) we have a higher confidence that
 # our global feature importance and local feature attributions are more
 # faithful to the model.
 # %%
 
 # Using the whole background without feature grouping
 I_PDP, I_PFI = get_PDP_PFI_importance(decomp_sym)
-bar([np.sqrt(I_PFI), np.sqrt(I_PDP)], features.print_names())
+bar([np.sqrt(I_PFI), np.sqrt(I_PDP)], features.names())
 plt.title("Full background without grouping")
 plt.show()
 
@@ -242,7 +241,7 @@ plt.show()
 
 # Using the whole background with feature grouping
 I_PDP, I_PFI = get_PDP_PFI_importance(decomp_grouped_sym)
-bar([np.sqrt(I_PFI), np.sqrt(I_PDP)], grouped_features.print_names())
+bar([np.sqrt(I_PFI), np.sqrt(I_PDP)], grouped_features.names())
 plt.title("Full background with grouping")
 plt.show()
 
@@ -251,14 +250,14 @@ plt.show()
 # The groups are passed to the function
 I_PDP, I_PFI = get_PDP_PFI_importance(decomp_grouped_sym, groups=groups)
 
-fig, axes = plt.subplots(1, 2)
+fig, axes = plt.subplots(1, 2, figsize=(10, 5))
 for i in range(2):
 
     bar([np.sqrt(I_PFI[i]), np.sqrt(I_PDP[i])], 
-        grouped_features.print_names(),
+        grouped_features.names(),
         ax=axes[i],
         color=COLORS[i])
-    axes[i].set_xlim(0, np.sqrt(I_PFI.max()))
+    axes[i].set_xlim(0, np.sqrt(I_PFI.max())+0.05)
     axes[i].set_title(rules[i], fontsize=10)
 plt.show()
 
@@ -285,7 +284,6 @@ print(f"Poutcome conditioned on contact=unknown={np.unique(background[~groups, 1
 # are one-dimensional. By setting `idxs=range(14)` in `partial_dependence_plot`, we tell
 # the function to only plot the first 14 feature and exclude the 15th one, which is
 # `day:month`.
-
 # %%
 
 partial_dependence_plot(decomp_grouped_sym, background, background, 
@@ -323,3 +321,5 @@ axes[1].set_xlabel("day")
 axes[1].set_ylabel("month")
 fig.colorbar(map, ax=axes.ravel().tolist())
 plt.show()
+
+# %%

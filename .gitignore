@@ -9,3 +9,5 @@ pyfd.egg-info/
 *.o
 docs/*
 build/*
+tutorials/models/*
+tutorials/Images/*

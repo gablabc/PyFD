@@ -1,6 +1,6 @@
 # %% [markdown]
 # # Introduction to the PyFD package
-# This tutorial introduces most of the functionalities of the `PyFD`` package.
+# This tutorial introduces most of the functionalities of the `PyFD` package.
 # We will go quickly through the code and leave in-depth explanations for subsequent tutorials.
 # In this example, we will decompose a complex GBT model trained to predict bike rentals. We will see how to 
 # interpret said model in spite of the presence of strong feature interactions.
@@ -29,7 +29,7 @@ setup_pyplot_font(15)
 X, y, features = get_data_bike()
 features.feature_objs[1].cats = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]
 features.feature_objs[4].cats = ["Mon", "Thu", "Wed", "Thu", "Fri", "Sat", "Sun"]
-print(features.summary())
+features.summary()
 
 # %% [markdown]
 # ## Fitting model
@@ -108,7 +108,7 @@ foreground = X_test
 decomp = get_components_tree(model, foreground, background, algorithm="leaf")
 # Plot the additive terms
 partial_dependence_plot(decomp, foreground, background, features,
-                        plot_hist=True, n_cols=5)
+                        plot_hist=True, n_cols=5, figsize=(24, 10))
 plt.show()
 
 # %% [markdown]
@@ -160,7 +160,7 @@ print(Phis.shape)
 # pairwise interaction strenght among the features
 # %%
 
-interactions_heatmap(Phis, features.print_names())
+interactions_heatmap(Phis, features.names())
 plt.show()
 
 # %% [markdown]
@@ -216,13 +216,13 @@ from pyfd.shapley import interventional_treeshap
 from pyfd.plots import bar
 
 grouped_features = features.group([[2, 5, 7]])
-print(grouped_features.summary())
+grouped_features.summary()
 
 # %% [markdown]
 # We have a new feature `hr:workingday:temp`. The column `I^-1({i})` in the 
 # summary table represents the pre-image of each feature i.e. what columns of *X* 
-# map to each feature. Here we have `I^-1({i})=[2, 5, 7]` because columns 2, 5 and 7 
-# all encode the meya-feature `hr:workingday:temp`.
+# map to each feature. Here we have `I^-1(7)=[2, 5, 7]` because columns 2, 5 and 7 
+# all encode the 7th feature `hr:workingday:temp`.
 #
 # To compute a decomposition using this new meta-feature, the `Imap_inv` attribute 
 # of `grouped_features` must be passed to the the decomposition algorithm.
@@ -305,13 +305,13 @@ for idx in range(0, 10, 2):
 # Without feature grouping
 I_PDP = np.sqrt( np.stack([(decomp[(i,)]**2).mean() for i in range(d)]) )
 I_SHAP = np.sqrt(np.mean(shapley_values**2, axis=0))
-features_names = features.print_names()
+features_names = features.names()
 bar([I_SHAP, I_PDP], features_names)
 
 # With feature grouping
 I_PDP = np.sqrt( np.stack([(decomp_grouped[(i,)]**2).mean() for i in range(D)]) )
 I_SHAP = np.sqrt(np.mean(shapley_values_grouped**2, axis=0))
-features_names = grouped_features.print_names()
+features_names = grouped_features.names()
 bar([I_SHAP, I_PDP], features_names)
 plt.show()
 
@@ -323,7 +323,6 @@ plt.show()
 # For example, we could put all features into one group and the
 # explanations would become useless. We present alternatives
 # that make explanations more granular.
-
 # %% [markdown]
 # ### GADGET-PDP
 # This method consists of computing multiple $h_{i,\mathcal{B}}$ 
@@ -389,32 +388,28 @@ from pyfd.plots import bar, attrib_scatter_plot, plot_legend, COLORS
 
 # Compute an anchored decomposition requires smaller backgrounds
 # FD-Trees require background=foreground
-background = X_train[:800]
+background = X_train[:1000]
 decomp = get_components_tree(model, background, background, anchored=True)
 
 # %%
 # Fit a FDTree by passing the `decomposition` as argument.
-# By fixing `branching_per_node=3` we investigate the top-3 splits at each 
-# node during the three growth. Hence, we are more confident that the chosen 
-# splits are not simply locally optimal.
-tree = CoE_Tree(max_depth=2, features=features, alpha=0.01, branching_per_node=3)
-tree.fit(background, decomp)
+interacting_features = [0, 2, 5]
+tree = CoE_Tree(max_depth=2, features=features.select(interacting_features), alpha=0.02)
+tree.fit(background[:, interacting_features], decomp)
 tree.print(verbose=True)
 
 # %% [markdown]
-# This FD-Tree has four leaves that separate workingdays from
-# non-workingdays, as well as cold from non-cold temperatures.
+# This FD-Tree has five leaves based on time and workingday.
 # Crucially, like we managed to do previously by grouping features, 
 # we are able to reduce the CoE to ~9%. Hence, the model can be
 # better approximated as additive if we stay on the separate leaves.
 #
-# Given the FD-Tree, we can visualize the global importance in 
-# of its leaf.
+# Given the FD-Tree, we visualize the global importance over its leaves.
 # %%
 
 # Using the whole background
 I_PDP, I_PFI = get_PDP_PFI_importance(decomp)
-bar([np.sqrt(I_PFI), np.sqrt(I_PDP)], features.print_names())
+bar([np.sqrt(I_PFI), np.sqrt(I_PDP)], features.names())
 plt.show()
 
 # %% [markdown]
@@ -424,7 +419,7 @@ plt.show()
 # is highly uncertain.
 # %%
 # Using regional backgrounds
-groups = tree.predict(background)
+groups = tree.predict(background[:, interacting_features])
 rules = tree.rules(use_latex=True)
 # The groups are passed to the function
 I_PDP, I_PFI = get_PDP_PFI_importance(decomp, groups=groups)
@@ -435,7 +430,7 @@ for i in range(4):
     col = i % 2
 
     bar([np.sqrt(I_PFI[i]), np.sqrt(I_PDP[i])], 
-        features.print_names(),
+        features.names(),
         ax=axes[row][col],
         color=COLORS[i])
     axes[row][col].set_xlim(0, np.sqrt(I_PFI.max()))
@@ -454,10 +449,6 @@ plt.show()
 # Secondly, the `hr` feature is always the most important
 # regardless of the region. This add weight to the argument that
 # this is **the most** important feature.
-#
-# Thirdly, the ranking of `temp` is higher for non-workingdays
-# compare to workingdays. This implies that alternative features
-# play a bigger role during workingdays.
 #
 # We can also compute regional shapley values and plot
 # them along side the regional $h_{i,\mathcal{B}}$ curves.
@@ -478,7 +469,7 @@ for group_idx in range(tree.n_groups):
 # %%
 
 attrib_scatter_plot(decomp, phis_list, background, features, 
-                    groups=groups, normalize_y=False)
+                    groups=groups, normalize_y=False, figsize=(24, 10))
 plot_legend(rules, ncol=2)
 plt.show()
 
