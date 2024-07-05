@@ -131,7 +131,7 @@ for idx in range(0, 20, 2):
 # %%
 FI = np.stack([(components[(i,)]**2).mean() for i in range(d)])
 FI = np.sqrt(FI)
-features_names = features.print_names()
+features_names = features.names()
 bar(FI, features_names)
 plt.show()
 top_k = np.argsort(-FI)[:5]

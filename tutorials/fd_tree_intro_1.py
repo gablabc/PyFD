@@ -64,7 +64,7 @@ plt.show()
 # Global feature importance
 I_PDP, I_PFI  = get_PDP_PFI_importance(decomposition)
 I_SHAP = (phis**2).mean(axis=0)
-bar([I_PFI, I_SHAP, I_PDP], features.print_names())
+bar([I_PFI, I_SHAP, I_PDP], features.names())
 plt.yticks(fontsize=35)
 plt.xlabel("Feature Importance")
 plt.show()
@@ -148,7 +148,7 @@ for group_idx in range(tree.n_groups):
     phis_list[group_idx] = explainer(background).values
 
     I_SHAP = (phis_list[group_idx]**2).mean(axis=0)
-    bar([I_PFI[group_idx], I_SHAP, I_PDP[group_idx]], features.print_names())
+    bar([I_PFI[group_idx], I_SHAP, I_PDP[group_idx]], features.names())
     # plt.gca().invert_yaxis()
     plt.yticks(fontsize=35)
     plt.xlabel("Feature Importance")

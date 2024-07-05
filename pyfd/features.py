@@ -96,7 +96,7 @@ class sparse_numerical_feature(object):
 
 # Integer feature x=0, 1, 2 ,3, ...
 class integer_feature(object):
-    """ Feature that takes intefer values 0, 1, 2, 3, ... """
+    """ Feature that takes integer values 0, 1, 2, 3, ... """
 
     def __init__(self, name, values):
         self.name = name
@@ -167,18 +167,16 @@ class Features(object):
             - `'sparse_num'` for numerical features with many zeros
             - `'bool'` for True/False features
             - `'num_int'` for integer features
-            - `('nominal', ['cat0', 'cat1'])` or `('ordinal', ['cat0', 'cat1'])` for categorical features
+            - `('nominal', 'cat0', 'cat1')` or `('ordinal', 'cat0', 'cat1')` for categorical features
         """
         
         self.d = X.shape[1]
         assert self.d == len(feature_names), "feature_names must be of length d"
         assert self.d == len(feature_types), "feature_types must be of length d"
-        # Map each feature to its group index
-        self.Imap = np.arange(self.d).astype(int)
-        # Map each group index to its features
+        # Each feature map to which X columns
         self.Imap_inv = [[i] for i in range(self.d)]
 
-        # Nominal categorical features that will need to be encoded
+        # Nominal categorical features
         self.nominal = []
         # A list of feature objects
         self.feature_objs = []
@@ -225,10 +223,10 @@ class Features(object):
             print_res.append( self.feature_objs[i](x_i) )
         return print_res
     
-    def print_names(self):
+    def names(self):
         return [obj.name for obj in self.feature_objs]
 
-    def print_types(self):
+    def types(self):
         return [obj.type for obj in self.feature_objs]
     
     def summary(self):
@@ -277,9 +275,6 @@ class Features(object):
         feature_copy.feature_objs = []
         feature_copy.nominal = []
         feature_copy.ordinal = []
-        # Imap does not make sense anymore since we not all data columns
-        # are considered
-        self.Imap = None
 
         for idx in feature_idxs:
             feature_copy.Imap_inv.append( self.Imap_inv[idx] )
@@ -301,7 +296,7 @@ class Features(object):
         Returns
         -------
         feature_copy : Features
-            A copy of the Feature instance with removec features
+            A copy of the Feature instance with removed features
             and updated `Imap_inv` and `feature_objs`
         """
         return self.select( [i for i in range(len(self.Imap_inv)) if not i in feature_idxs] )
@@ -310,7 +305,7 @@ class Features(object):
     def group(self, feature_groups):
         """ 
         Put the select feature into groups. This will update the 
-        Imap and Imap_inv attributes of the class
+        `Imap_inv` and `feature_objs` attributes of the class
 
         Parameters
         ----------
@@ -321,31 +316,27 @@ class Features(object):
         Returns
         -------
         feature_copy : Features
-            A copy of the Feature instance with grouped features
-            and updated I_map and I_map_inv
+            A copy of the Feature instance with removed features
+            and updated `Imap_inv` and `feature_objs`
         """
         assert type(feature_groups) in (tuple, list)
         assert type(feature_groups[0]) in (tuple, list)
 
         feature_copy = deepcopy(self)
-        # Update Imap_inv and feature_names
+        # Update Imap_inv
         for feature_group in feature_groups:
             feature_copy.Imap_inv.append(feature_group)
             for feature in feature_group:
                 feature_copy.Imap_inv.remove([feature])
-        # Update I_map, and feature_objs
-        counter = 0
+        
+        # Update feature_objs
         feature_copy.feature_objs = []
         for feature_group in feature_copy.Imap_inv:
-            # Update Imap
-            for idx in feature_group:
-                feature_copy.Imap[idx] = counter
             # Update types
             if len(feature_group) == 1:
                 feature_copy.feature_objs.append( self.feature_objs[feature_group[0]] )
             else:
                 feature_copy.feature_objs.append( combined_feature([self.feature_objs[idx] for idx in feature_group]) )
-            counter += 1
 
         feature_copy.nominal = []
         feature_copy.ordinal = []
@@ -365,35 +356,31 @@ if __name__ == "__main__":
                         feature_types=["num", "num_int", "num", "num", ("nominal", "cat", "dog")]
                         )
     features.summary()
-    print(features.print_names())
-    print(features.print_types())
+    print(features.names())
+    print(features.types())
     print(features.print_value(np.zeros(5)))
-    print(features.print_value(np.ones(5)))
-    print(features.Imap, "\n\n")
+    print(features.print_value(np.ones(5)), "\n\n")
 
     # Group some features
     grouped_features = features.group([[1, 3]])
     grouped_features.summary()
-    print(grouped_features.print_names())
-    print(grouped_features.print_types())
+    print(grouped_features.names())
+    print(grouped_features.types())
     print(grouped_features.print_value(np.zeros(5)))
-    print(grouped_features.print_value(np.ones(5)))
-    print(grouped_features.Imap, "\n\n")
+    print(grouped_features.print_value(np.ones(5)), "\n\n")
 
     # Keep some features
     keep_features = features.select([0, 2, 4])
-    print(keep_features.summary())
-    print(keep_features.print_names())
-    print(keep_features.print_types())
+    keep_features.summary()
+    print(keep_features.names())
+    print(keep_features.types())
     print(keep_features.print_value(np.zeros(5)))
-    print(keep_features.print_value(np.ones(5)))
-    print(keep_features.Imap, "\n\n")
+    print(keep_features.print_value(np.ones(5)), "\n\n")
 
     # Remove some features
     remove_features = features.remove([2])
-    print(remove_features.summary())
-    print(remove_features.print_names())
-    print(remove_features.print_types())
+    remove_features.summary()
+    print(remove_features.names())
+    print(remove_features.types())
     print(remove_features.print_value(np.zeros(5)))
-    print(remove_features.print_value(np.ones(5)))
-    print(remove_features.Imap, "\n\n")
+    print(remove_features.print_value(np.ones(5)), "\n\n")

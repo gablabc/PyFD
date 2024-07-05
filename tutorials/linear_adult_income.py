@@ -119,7 +119,7 @@ for idx in range(0, 20, 2):
 # %%
 FI = np.stack([(components[(i,)]**2).mean() for i in range(d)])
 FI = np.sqrt(FI)
-features_names = features.print_names()
+features_names = features.names()
 bar(FI, features_names)
 plt.show()
 top_k = np.argsort(-FI)[:5]
@@ -134,7 +134,7 @@ print(f"Top 5 features {[features_names[i] for i in top_k]}")
 # %%
 FI = np.stack([np.abs(components[(i,)]).max() for i in range(d)])
 FI = np.sqrt(FI)
-features_names = features.print_names()
+features_names = features.names()
 bar(FI, features_names)
 plt.show()
 top_k = np.argsort(-FI)[:5]
