@@ -12,7 +12,7 @@ from pyfd.fd_trees import CoE_Tree, PDP_PFI_Tree, GADGET_PDP
 from pyfd.decompositions import get_components_brute_force, get_PDP_PFI_importance
 from pyfd.plots import setup_pyplot_font, bar, attrib_scatter_plot, plot_legend
 
-setup_pyplot_font(30)
+setup_pyplot_font(15)
 
 # %% [markdown]
 # We first generate toy data following $x_i \sim U(-1, 1)$ for $i=0, 1, 2, 3, 4$
@@ -52,7 +52,7 @@ phis = explainer(background).values
 # %%
 
 decomposition = get_components_brute_force(h, X, X)
-attrib_scatter_plot(decomposition, phis, X, features)
+attrib_scatter_plot(decomposition, phis, X, features, figsize=(16, 4))
 plt.show()
 
 # %% [markdown]
@@ -70,18 +70,17 @@ plt.xlabel("Feature Importance")
 plt.show()
 
 # %% [markdown]
-# In this example, the importance of $x_1$ is highly uncertain because different explanation techniques give
-# it vastly different importance. But what is the source of this disagreement? The answer is
-# : **feature interactions**. Indeed, without interactions all explainers would agree. Yet because $x_1$ is involved
-# in strong interactions with $x_0$ and $x_2$, the explainers cannot agree on its importance.
+# In this example, the importance of $x_1$ is uncertain because different explanation techniques give
+# it vastly different importance. But what is the source of this disagreement? 
+# The answer is **feature interactions**. Indeed, without interactions all explainers would agree. 
+# Yet because $x_1$ interatcs with $x_0$ and $x_2$, the explainers cannot agree on its importance.
 #
 # How do we reduce feature interactions? Well, $x_1$ interacts
 # with $x_0$ and $x_2$ because the effect of varying $x_0$ and $x_2$
-# depends on whether or not $x_1$ is positive. But, if we were
-# to only focus on instances for which $x_1$ is positive (or negative),
-# then this interactions would cease to exist. The idea of FDTrees is therefore
-# to partition the input space into interpretable regions where interactions
-# within each region are reduced.
+# depends on whether or not $x_1$ is positive. But, if we only 
+# focus on instances for which $x_1$ is positive (or negative),
+# then this interactions ceases to exist. The idea behind FDTrees is therefore
+# to partition the input space into regions where interactions are reduced.
 # %%
 
 # Fit the tree
@@ -125,8 +124,8 @@ rules = tree.rules(use_latex=True)
 # %% [markdown]
 # Given these regions, instead of using the whole dataset
 # as background, we can iterate over all regions and
-# only study the samples that land in said region.
-# Regional Feature Importance can be computed by passing
+# only study the samples that land in them.
+# Regional Feature Importance can also be computed by passing
 # `groups` to `get_PDP_PFI_importance`.
 # %%
 # Global Feature Importance
@@ -135,30 +134,33 @@ I_PDP, I_PFI  = get_PDP_PFI_importance(decomposition, groups=groups)
 # %% [markdown]
 # Shapley values must be computed by calling SHAP various times.
 # %%
+from pyfd.plots import COLORS
+
+fig, axes = plt.subplots(1, tree.n_groups, figsize=(8, 4))
 # Rerun SHAP and recompute global importance regionally
 phis_list = [0] * tree.n_groups
-for group_idx in range(tree.n_groups):
-    print(f"### Region {group_idx} ###")
-    idx_select = (groups == group_idx)
+for i in range(tree.n_groups):
+    idx_select = (groups == i)
     background = X[idx_select]
 
     # SHAP
     masker = Independent(background, max_samples=background.shape[0])
     explainer = shap.explainers.Exact(h, masker)
-    phis_list[group_idx] = explainer(background).values
+    phis_list[i] = explainer(background).values
 
-    I_SHAP = (phis_list[group_idx]**2).mean(axis=0)
-    bar([I_PFI[group_idx], I_SHAP, I_PDP[group_idx]], features.names())
-    # plt.gca().invert_yaxis()
-    plt.yticks(fontsize=35)
-    plt.xlabel("Feature Importance")
-    plt.show()
+    I_SHAP = (phis_list[i]**2).mean(axis=0)
+    bar([I_PFI[i], I_SHAP, I_PDP[i]], features.names(), ax=axes[i], color=COLORS[i])
+    axes[i].set_xlim(0, np.max(I_PFI)+0.02)
+    axes[i].set_xlabel("Feature Importance")
+    axes[i].set_title(rules[i])
+plt.show()
 
 # %% [markdown]
 # Finally, we recompare the local feature attributions
 # %%
 
-attrib_scatter_plot(decomposition, phis_list, X, features, groups=groups)
+attrib_scatter_plot(decomposition, phis_list, X, features, 
+                    groups=groups, figsize=(16, 4))
 plot_legend(rules, ncol=2)
 plt.show()
 

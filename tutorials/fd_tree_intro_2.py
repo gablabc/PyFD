@@ -13,7 +13,7 @@ from pyfd.fd_trees import CoE_Tree, PDP_PFI_Tree, GADGET_PDP
 from pyfd.decompositions import get_components_brute_force, get_PDP_PFI_importance
 from pyfd.plots import setup_pyplot_font, bar, attrib_scatter_plot, plot_legend
 
-setup_pyplot_font(30)
+setup_pyplot_font(15)
 
 # %% [markdown]
 # We first generate toy data following $x_i \sim U(-1, 1)$ for $i=0, 1, 2, 3$
@@ -58,9 +58,9 @@ phis = explainer(background).values
 # which is computed by PyFD as follows
 # %%
 
-# ANOVA Additive Decomposition
+# Additive Decomposition
 decomposition = get_components_brute_force(h, X, X)
-attrib_scatter_plot(decomposition, phis, X, features)
+attrib_scatter_plot(decomposition, phis, X, features, figsize=(16, 4))
 plt.show()
 
 # %% [markdown]
@@ -89,24 +89,6 @@ tree = CoE_Tree(features, max_depth=2, save_losses=True, branching_per_node=2)
 tree.fit(X, decomposition)
 tree.print()
 
-
-# Plot the objective values w.r.t the split candidates
-plt.figure()
-for i in range(3):
-    splits = tree.root.splits[i]
-    objectives = tree.root.objectives[i]
-    plt.plot(splits, objectives, '-o', label=latex_feature_names[i])
-plt.ylim(0, y.var())
-plt.xlabel(r"Split threshold $\gamma$")
-if isinstance(tree, CoE_Tree):
-    plt.ylabel(r"$L_2$ Cost of Exclusion")
-elif isinstance(tree, PDP_PFI_Tree):
-    plt.ylabel("Loss PFI vs PDP")
-elif isinstance(tree, GADGET_PDP):
-    plt.ylabel("Loss ICE vs PDP")
-plt.legend()
-plt.show()
-
 # %% [markdown]
 # Once a FDTree is fitted, it can be used to partition
 # the data samples into groups. The method `.predict()` 
@@ -133,32 +115,33 @@ I_PDP, I_PFI  = get_PDP_PFI_importance(decomposition, groups=groups)
 # %% [markdown]
 # Shapley values must be computed by calling SHAP various times.
 # %%
+from pyfd.plots import COLORS
 
-# Rerun SHAP and PDP
+fig, axes = plt.subplots(1, tree.n_groups, figsize=(8, 4))
+# Rerun SHAP and recompute global importance regionally
 phis_list = [0] * tree.n_groups
-for group_idx in range(tree.n_groups):
-    print(f"### Region {group_idx} ###")
-    idx_select = (groups == group_idx)
+for i in range(tree.n_groups):
+    idx_select = (groups == i)
     background = X[idx_select]
 
     # SHAP
-    mu = h(background).mean()
     masker = Independent(background, max_samples=background.shape[0])
     explainer = shap.explainers.Exact(h, masker)
-    phis_list[group_idx] = explainer(background).values
+    phis_list[i] = explainer(background).values
 
-    I_SHAP = (phis_list[group_idx]**2).mean(axis=0)
-    bar([I_PFI[group_idx], I_SHAP, I_PDP[group_idx]], features.names())
-    # plt.gca().invert_yaxis()
-    plt.yticks(fontsize=35)
-    plt.xlabel("Feature Importance")
-    plt.show()
+    I_SHAP = (phis_list[i]**2).mean(axis=0)
+    bar([I_PFI[i], I_SHAP, I_PDP[i]], features.names(), ax=axes[i], color=COLORS[i])
+    axes[i].set_xlim(0, np.max(I_PFI)+0.02)
+    axes[i].set_xlabel("Feature Importance")
+    axes[i].set_title(rules[i])
+plt.show()
 
 # %% [markdown]
 # Finally, we recompare the local feature attributions
 # %%
 
-attrib_scatter_plot(decomposition, phis_list, X, features, groups=groups)
+attrib_scatter_plot(decomposition, phis_list, X, features, 
+                    groups=groups, figsize=(16, 4))
 plot_legend(rules, ncol=3)
 plt.show()
 
