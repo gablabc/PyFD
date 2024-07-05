@@ -8,7 +8,7 @@ from copy import deepcopy
 # A feature is an object that has a `name` attribute, a `type` attribute, and a callable
 # that takes x and return a string representation of the feature. These are a high level representation
 # e.g. numerical -> (low, medium, high), categorical 3 -> "Married" etc.
-# These representation are primarily used when visualising local attributions, where the 
+# These representation are primarily used when visualizing local attributions, where the 
 # exact feature values may lack context.
 
 
@@ -248,8 +248,8 @@ class Features(object):
                     property = property[:free_space[j]-1]
                 print_res += " " + property + space * " " + "|"
             print_res += "\n"
-        print_res += "---------------------------------------------------------------------------\n"
-        return print_res
+        print_res += "-------------------------------------------------------------------------------\n"
+        print(print_res)
 
     def __len__(self):
         return len(self.Imap_inv)
@@ -364,7 +364,7 @@ if __name__ == "__main__":
     features = Features(X, feature_names=[f"x{i}" for i in range(5)],
                         feature_types=["num", "num_int", "num", "num", ("nominal", "cat", "dog")]
                         )
-    print(features.summary())
+    features.summary()
     print(features.print_names())
     print(features.print_types())
     print(features.print_value(np.zeros(5)))
@@ -373,7 +373,7 @@ if __name__ == "__main__":
 
     # Group some features
     grouped_features = features.group([[1, 3]])
-    print(grouped_features.summary())
+    grouped_features.summary()
     print(grouped_features.print_names())
     print(grouped_features.print_types())
     print(grouped_features.print_value(np.zeros(5)))
