@@ -82,7 +82,7 @@ def setup_adult(with_ohe, model_name, grouping):
     if with_ohe:
         ohe = ColumnTransformer([
                                 ('id', FunctionTransformer(), features.ordinal),
-                                ('ohe', OneHotEncoder(sparse=False), features.nominal)])
+                                ('ohe', OneHotEncoder(sparse_output=False), features.nominal)])
     else:
         ohe = FunctionTransformer()
 
