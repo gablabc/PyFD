@@ -1,7 +1,6 @@
 from copy import deepcopy
 import numpy as np
 from sklearn.base import BaseEstimator
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from heapq import heappush, heappop
 
@@ -47,6 +46,7 @@ class Node(object):
 
 class FDTree(BaseEstimator, ABC):
     """ Train a binary tree to minimize : LoA + alpha |L| """
+
     def __init__(self, features, 
                  max_depth=3,
                  min_samples_leaf=20,
@@ -57,21 +57,18 @@ class FDTree(BaseEstimator, ABC):
         Parameters
         ----------
         features : Feature object
-
         max_depth : int, default=3
             Maximum depth of FDTrees
-
         min_samples_leaf : int, default=20
             The minimum number of samples allowed per leaf
-
         branching_per_node : int, default=1
-            At each node, we consider `branching_per_node` different splits candidates. A value of
-            `1` corresponds to greedy CART-like optimization, while larger values allow to try various
-            splits and return a more optimal solution. Note that the training scales as `O(branching_per_node^max_depth)`
-
+            At each node, we consider `branching_per_node` different splits candidates.
+            A value of `1` corresponds to greedy CART-like optimization, while larger values 
+            allow to try various splits and return a more optimal solution. Note that the training 
+            scales as `O(branching_per_node^max_depth)`
         alpha : float, default=0.05
-            Regularization of the training objective `LoA + alpha |L|`. That is, splitting nodes increases the loss by `alpha`
-            and so the reduction in `LoA` must be large enough to compensate.
+            Objective regularization `LoA + alpha |L|` so splitting nodes increases the loss by 
+            `alpha` and reductions in `LoA` must be large enough to compensate.
         """
         self.feature_objs = features.feature_objs
         self.max_depth = max_depth
@@ -82,9 +79,19 @@ class FDTree(BaseEstimator, ABC):
 
 
     def print(self, verbose=False, return_string=False):
+        """
+        Print the FDTree
+        
+        Parameters
+        ----------
+        verbose : bool, default=False
+            To be extra verbose.
+        return_strong : bool, default=False
+            Whether to print the tree or the return the string.
+        """
         tree_strings = []
         self.group_idx = 0
-        self.recurse_print_tree_str(self.root, verbose=verbose, tree_strings=tree_strings)
+        self._recurse_print_tree_str(self.root, verbose=verbose, tree_strings=tree_strings)
         tree_strings.append(f"Final LoA {self.final_loa:.4f}")
         if return_string:
             return "\n".join(tree_strings)
@@ -92,7 +99,7 @@ class FDTree(BaseEstimator, ABC):
             print("\n".join(tree_strings))
 
     
-    def recurse_print_tree_str(self, node, verbose=False, tree_strings=[]):
+    def _recurse_print_tree_str(self, node, verbose=False, tree_strings=[]):
         if verbose:
             tree_strings.append("|   " * node.depth + f"LoA {node.loa:.4f}")
             tree_strings.append("|   " * node.depth + f"Samples {node.N_samples:d}")
@@ -104,13 +111,13 @@ class FDTree(BaseEstimator, ABC):
         else:
             curr_feature_name = self.feature_objs[node.feature].name
             tree_strings.append("|   " * node.depth + f"If {curr_feature_name} ≤ {node.threshold:.4f}:")
-            self.recurse_print_tree_str(node=node.child_left, verbose=verbose, tree_strings=tree_strings)
+            self._recurse_print_tree_str(node=node.child_left, verbose=verbose, tree_strings=tree_strings)
             tree_strings.append("|   " * node.depth + "else:")
-            self.recurse_print_tree_str(node=node.child_right, verbose=verbose, tree_strings=tree_strings)
+            self._recurse_print_tree_str(node=node.child_right, verbose=verbose, tree_strings=tree_strings)
 
 
-    def get_split_candidates(self, x_i, i):
-        """ Return a list of split candiates """
+    def _get_split_candidates(self, x_i, i):
+        """ Return a list of split candiates along feature i """
         if self.feature_objs[i].type == "num":
             x_i_unique = np.unique(x_i)
             if len(x_i_unique) < 40:
@@ -149,11 +156,11 @@ class FDTree(BaseEstimator, ABC):
         return splits
     
 
-    def get_feature_splits_heapq(self, curr_node, instances_idx):
+    def _get_feature_splits_heapq(self, curr_node, instances_idx):
         """ Compute a heapqueue for splits along each feature """
         heapq = []
         for feature in range(self.D):
-            splits, loa_left, loa_right = self.get_objective_for_splits(instances_idx, feature)
+            splits, loa_left, loa_right = self._get_objective_for_splits(instances_idx, feature)
             # No split was conducted
             if len(splits) == 0:
                 pass
@@ -174,16 +181,23 @@ class FDTree(BaseEstimator, ABC):
     
 
     @abstractmethod
-    def get_objective_for_splits(self, instances_idx, feature):
-        """ Get the objective value at each split """
+    def _get_objective_for_splits(self, instances_idx, feature):
+        """ 
+        Get the objective value at each split.
+        
+        Parameters
+        ----------
+        instances_idx : np.ndarray
+            Array of intergers representing the index of the instances at the node.
+        feature : int
+            The index of the feature being split.
+        """
         pass
     
 
     @abstractmethod
     def fit(self, X, **kwargs):
-        """ Fit the tree via the provided tensors """
-        self.loa_factor = None # To have an loa [0, 1]
-        self.n_groups = 0
+        """ Abstract Method to Implement """
         pass
 
     
@@ -196,13 +210,13 @@ class FDTree(BaseEstimator, ABC):
         node_loa = loa * self.loa_factor
 
         # Stop the tree growth if the maximum depth is attained, 
-        # or not further split can be justified given the regularization alpha, 
+        # or no further split can be justified given the regularization alpha, 
         # or any further split will yield leaves with too few samples
         if depth >= self.max_depth or node_loa < self.alpha or len(instances_idx) < 2 * self.min_samples_leaf:
             return curr_node, node_loa + self.alpha, 1
         
         # Otherwise get a heapq of split candidates
-        heapq = self.get_feature_splits_heapq(curr_node, instances_idx)
+        heapq = self._get_feature_splits_heapq(curr_node, instances_idx)
 
         # Stop the tree growth if no further splits are
         if len(heapq) == 0:
@@ -250,7 +264,19 @@ class FDTree(BaseEstimator, ABC):
 
 
     def predict(self, X_new):
-        """ Return the group index of each instance """
+        """ 
+        Compute the group index of each instance 
+        
+        Parameters
+        ----------
+        X_new : (N, d) np.ndarray
+            Array containing the data on which to predict.
+            
+        Returns
+        -------
+        groups : (N,) np.ndarray
+            The group index of each datum.
+        """
         groups = np.zeros(X_new.shape[0], dtype=np.int32)
         self.group_idx = 0
         if self.n_groups == 1:
@@ -296,7 +322,7 @@ class FDTree(BaseEstimator, ABC):
         if node.child_left is None:
             if len(curr_rule) > 1:
                 # Simplify long rule lists if possible
-                curr_rule_copy = self.postprocess_rules(curr_rule, use_latex)
+                curr_rule_copy = self._postprocess_rules(curr_rule, use_latex)
                 if len(curr_rule_copy) > 1:
                     rules[self.group_idx] = "(" + SYMBOLS[use_latex]["and_str"].join(curr_rule_copy) + ")"
                 else:
@@ -355,7 +381,7 @@ class FDTree(BaseEstimator, ABC):
             curr_rule.pop()
 
 
-    def postprocess_rules(self, curr_rule, use_latex):
+    def _postprocess_rules(self, curr_rule, use_latex):
         """ 
         Simplify numerical rules
         - Remove redundancy x1>3 and x1>5 becomes x1>5
@@ -416,10 +442,23 @@ class CoE_Tree(FDTree):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-
     def fit(self, X, decomposition):
+        """
+        Fit the Coe_Tree
+
+        Parameters
+        ----------
+        X : (N, d) np.ndarray
+            The background data on which to fit the tree.
+        decomposition : dict{Tuple: np.ndarray}
+            The functional decomposition used to compute the CoE objective.
+            It needs to be anchored with foreground=background i.e.
+            `decomposition[(0,)].shape = (N, N)`.
+        """
+
         self.X = X
         self.N, self.D = X.shape
+        assert np.shape(decomposition[(0,)]) == (self.N, self.N), "An Anchored decomposition with foreground=background is needed"
         self.H_add = get_h_add(decomposition)
         self.h = decomposition[()]
         self.loa_factor = 1 / self.h.var() # To have an loa [0, 1]
@@ -432,17 +471,16 @@ class CoE_Tree(FDTree):
         return self
 
 
-    def get_objective_for_splits(self, instances_idx, feature):
+    def _get_objective_for_splits(self, instances_idx, feature):
         x_i = self.X[instances_idx, feature]
 
-        splits = self.get_split_candidates(x_i, feature)
+        splits = self._get_split_candidates(x_i, feature)
 
         # No split possible
         if len(splits) == 0:
             return [], [], []
         
         # Otherwise we optimize the objective
-
         loa_left = np.zeros(len(splits))
         loa_right = np.zeros(len(splits))
         to_keep = np.zeros((len(splits))).astype(bool)
@@ -466,12 +504,24 @@ class PDP_PFI_Tree(FDTree):
 
 
     def fit(self, X, decomposition):
+        """
+        Fit the PDP_PFI_Tree
+
+        Parameters
+        ----------
+        X : (N, d) np.ndarray
+            The background data on which to fit the tree.
+        decomposition : dict{Tuple: np.ndarray}
+            The functional decomposition used to compute the CoE objective.
+            It needs to be anchored with foreground=background i.e.
+            `decomposition[(0,)].shape = (N, N)`.
+        """
         self.X = X
         self.N, self.D = X.shape
         self.h = decomposition[()]
         keys = decomposition.keys()
         additive_keys = [key for key in keys if len(key)==1]
-        assert np.shape(decomposition[additive_keys[0]]) == (self.N, self.N), "Anchored decompositions must be provided"
+        assert np.shape(decomposition[additive_keys[0]]) == (self.N, self.N), "An Anchored decomposition with foreground=background is needed"
         self.H = np.zeros((self.N, self.N, len(additive_keys)))
         # Additive terms
         for i, key in enumerate(additive_keys):
@@ -486,10 +536,10 @@ class PDP_PFI_Tree(FDTree):
         return self
 
 
-    def get_objective_for_splits(self, instances_idx, feature):
+    def _get_objective_for_splits(self, instances_idx, feature):
         x_i = self.X[instances_idx, feature]
 
-        splits = self.get_split_candidates(x_i, feature)
+        splits = self._get_split_candidates(x_i, feature)
 
         # No split possible
         if len(splits) == 0:
@@ -520,13 +570,27 @@ class PDP_SHAP_Tree(FDTree):
 
 
     def fit(self, X, decomposition, Phi):
+        """
+        Fit the PDP_SHAP_Tree
+
+        Parameters
+        ----------
+        X : (N, d) np.ndarray
+            The background data on which to fit the tree.
+        decomposition : dict{Tuple: np.ndarray}
+            The functional decomposition used to compute the CoE objective.
+            It needs to be anchored with foreground=background i.e.
+            `decomposition[(0,)].shape = (N, N)`.
+        Phi : (N, N, d) np.ndarray
+            Array of anchored shapley values.
+        """
         self.X = X
         self.N, self.D = X.shape
         self.h = decomposition[()]
         # Construct the H tensor
         keys = decomposition.keys()
         additive_keys = [key for key in keys if len(key)==1]
-        assert np.shape(decomposition[additive_keys[0]]) == (self.N, self.N), "Anchored decompositions must be provided"
+        assert np.shape(decomposition[additive_keys[0]]) == (self.N, self.N), "An Anchored decomposition with foreground=background is needed"
         H = np.zeros((self.N, self.N, len(additive_keys)))
         # Additive terms
         for i, key in enumerate(additive_keys):
@@ -544,10 +608,10 @@ class PDP_SHAP_Tree(FDTree):
         return self
 
 
-    def get_objective_for_splits(self, instances_idx, feature):
+    def _get_objective_for_splits(self, instances_idx, feature):
         x_i = self.X[instances_idx, feature]
 
-        splits = self.get_split_candidates(x_i, feature)
+        splits = self._get_split_candidates(x_i, feature)
 
         # No split possible
         if len(splits) == 0:
@@ -577,12 +641,24 @@ class GADGET_PDP(FDTree):
         super().__init__(*args, **kwargs)
     
     def fit(self, X, decomposition):
+        """
+        Fit GADGET_PDP
+
+        Parameters
+        ----------
+        X : (N, d) np.ndarray
+            The background data on which to fit the tree.
+        decomposition : dict{Tuple: np.ndarray}
+            The functional decomposition used to compute the CoE objective.
+            It needs to be anchored with foreground=background i.e.
+            `decomposition[(0,)].shape = (N, N)`.
+        """
         self.X = X
         self.N, self.D = X.shape
         self.h = decomposition[()]
         keys = decomposition.keys()
         additive_keys = [key for key in keys if len(key)==1]
-        assert np.shape(decomposition[additive_keys[0]]) == (self.N, self.N), "Anchored decompositions must be provided"
+        assert np.shape(decomposition[additive_keys[0]]) == (self.N, self.N), "An Anchored decomposition with foreground=background is needed"
         self.R = np.zeros((self.N, self.N, len(additive_keys)))
         # Additive terms
         for i, key in enumerate(additive_keys):
@@ -600,10 +676,10 @@ class GADGET_PDP(FDTree):
         return self
 
 
-    def get_objective_for_splits(self, instances_idx, feature):
+    def _get_objective_for_splits(self, instances_idx, feature):
         x_i = self.X[instances_idx, feature]
 
-        splits = self.get_split_candidates(x_i, feature)
+        splits = self._get_split_candidates(x_i, feature)
 
         # No split possible
         if len(splits) == 0:
@@ -644,8 +720,19 @@ class CART(FDTree):
 
 
     def fit(self, X, target):
+        """
+        Fit CART
+
+        Parameters
+        ----------
+        X : (N, d) np.ndarray
+            The background data on which to fit the tree.
+        target : (N,)
+            Target to predict with regression trees.
+        """
         self.X = X
         self.N, self.D = X.shape
+        assert target.shape == (self.N,), "The target must have shape (N,)"
         self.target = target
         self.loa_factor = 1 / self.target.var() # To have an loss [0, 1]
         loa = self.target.var()
@@ -656,10 +743,10 @@ class CART(FDTree):
         return self
 
 
-    def get_objective_for_splits(self, instances_idx, feature):
+    def _get_objective_for_splits(self, instances_idx, feature):
         x_i = self.X[instances_idx, feature]
 
-        splits = self.get_split_candidates(x_i, feature)
+        splits = self._get_split_candidates(x_i, feature)
 
         # No split possible
         if len(splits) == 0:
@@ -701,17 +788,6 @@ class CART(FDTree):
 #         best_obj_right = loa_right[idx] / N_right[idx]
 
 #         return best_feature_split, best_split, best_obj, best_obj_left, best_obj_right
-
-
-
-@dataclass
-class Partition:
-    type: str = "coe"  # Type of partitionning "fd-tree" "random"
-    save_losses : bool = True, # Save the tree locally
-    alpha : float = 0.05 # Regularization of the FDTree
-    min_samples_leaf : int = 30 # Minimum number of samples per leaf of the FDTree
-    max_depth : int = 1 # Maximum depth of the FDTree
-    branching_per_node : int = 1 # Number of splits to consider at each node (1 implies greedy)
 
 
 PARTITION_CLASSES = {
