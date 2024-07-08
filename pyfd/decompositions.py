@@ -142,8 +142,8 @@ def _get_anchored_components_u(decomposition, h, key, Imap_inv, x_idxs, foregrou
     Parameters
     ----------
     decomposition : dict{Tuple: np.ndarray}
-        The various components of the decomposition indexed via their feature subset e.g. `decomposition[(1, 2, 3)]`
-        returns the 3-way interactions between features 1, 2 and 3.
+        The various components of the decomposition indexed via their feature subset e.g. 
+        `decomposition[(1, 2, 3)]` returns the 3-way interactions between features 1, 2 and 3.
     h : model X -> R
         A callable black box `h(X)`.
     key : Tuple(Int)
@@ -214,16 +214,16 @@ def get_components_brute_force(h, foreground, background, Imap_inv=None, interac
         The highest level of interactions to consider. If it is a list of tuples, then we compute all
         specified components in `interactions`.
     anchored : bool, default=True
-        Flag to compute anchored decompositions or interventional decompositions. If anchored, a component
-        is (Nf, Nb) and if interventional it is (Nf,).
+        Flag to compute anchored decompositions or interventional decompositions. If anchored, a 
+        component is (Nf, Nb). If interventional, a component is (Nf,).
     show_bar : bool, default=False
         Flag to decide if progress bar is shown.
     
     Returns
     -------
     decomposition : dict{Tuple: np.ndarray}
-        The various components of the decomposition indexed via their feature subset e.g. `decomposition[(1, 2, 3)]`
-        returns the 3-way interactions between features 1, 2 and 3.
+        The various components of the decomposition indexed via their feature subset e.g. 
+        `decomposition[(1, 2, 3)]` returns the 3-way interactions between features 1, 2 and 3.
     """
     
     # Setup
@@ -284,7 +284,8 @@ def get_components_brute_force(h, foreground, background, Imap_inv=None, interac
 def get_components_adaptive(h, background, Imap_inv=None, tolerance=0.05, show_bar=False, precompute=None):
     """
     Compute the Anchored/Interventional Decomposition of any black box by iteratively exploring
-    the lattice space of feature interactions.
+    the lattice space of feature interactions. This function assumes that foreground=background
+    in ordre to exploit the duality between averaging a component row-wise and column-wise.
 
     Parameters
     ----------
@@ -301,14 +302,15 @@ def get_components_adaptive(h, background, Imap_inv=None, tolerance=0.05, show_b
     tolerance : float, default=0.05
         Stop exploring the lattice space when the explained variance exceeds `1-tolerance` of the total variance.
     precompute: dict{Tuple: np.ndarray}, default=None
-        A precomputed decomposition containing all additive terms (i.e. `decomp[(i,)]`) can be provided to
-        speed up the algorithm
+        A precomputed decomposition containing all additive terms (i.e. `decomp[(i,)]`) can be provided 
+        to speed up the algorithm. The components must be (Nb, Nb).
     
     Returns
     -------
     decomposition : dict{Tuple: np.ndarray}
-        The various components of the decomposition indexed via their feature subset e.g. `decomposition[(1, 2, 3)]`
-        returns the 3-way interactions between features 1, 2 and 3.
+        The various components of the decomposition indexed via their feature subset e.g. 
+        `decomposition[(1, 2, 3)]` returns the (Nb, Nb) the 3-way interactions between features 
+        1, 2 and 3.
     """
     
     # Setup
@@ -388,7 +390,7 @@ def get_components_adaptive(h, background, Imap_inv=None, tolerance=0.05, show_b
 def get_components_tree(model, foreground, background, Imap_inv=None, anchored=False, algorithm='recurse'):
     """ 
     Compute the Anchored/Interventional Decomposition of a tree ensemble 
-    (e.g. Random Forest and Gradient Boosted Trees)
+    (e.g. Random Forest and Gradient Boosted Trees).
 
     Parameters
     ----------
@@ -402,8 +404,9 @@ def get_components_tree(model, foreground, background, Imap_inv=None, anchored=F
     Imap_inv : List(List(int)), default=None
         A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
         the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature.
-    anchored : bool, default=False
-        Flag to compute anchored decompositions or interventional decompositions.
+    anchored : bool, default=True
+        Flag to compute anchored decompositions or interventional decompositions. If anchored, a 
+        component is (Nf, Nb). If interventional, a component is (Nf,).
     algorithm : string, default='recurse'
         The algorithm used to compute the decompositions, the options are
         - `recurse` with complexity `Nf Nb 2^min(depth, n_features)` can compute anchored and interventional
@@ -412,8 +415,8 @@ def get_components_tree(model, foreground, background, Imap_inv=None, anchored=F
     Returns
     -------
     decomposition : dict{Tuple: np.ndarray}
-        The various components of the decomposition indexed via their feature subset e.g. `decomposition[(0,)]`
-        returns the main effect of feature 0.
+        The various components of the decomposition indexed via their feature subset e.g. 
+        `decomposition[(0,)]` returns the main effect of feature 0.
     """
 
     sym = id(foreground) == id(background)
@@ -565,9 +568,10 @@ def get_PDP_PFI_importance(decomposition, groups=None, return_keys=False, varian
     decomposition : dict{Tuple: np.ndarray}
         An anchored decomposition so that `decomposition[(0,)].shape = (Nf, Nb)`.
     groups : (N,) np.ndarray, default=None
-        An array of N integers (values in {0, 1, 2, n_groups-1}) representing the group index of each datum.
+        An array of N integers (values in {0, 1, 2, n_groups-1}) representing the group index of 
+        each datum. Is only applicable if foreground=background and the decomposition has shape (N, N).
     return_keys : bool, default=False
-        whether or not to return the additive keys associated with each interaction index.
+        whether to return the additive keys associated with each interaction index.
     variance : bool, default=False
         return the variance-based importance metrics PDP-Variance and Marginal-Sobol. Both of which are inviariant
         to the correlation between feature j and the remaining features.
@@ -592,7 +596,6 @@ def get_PDP_PFI_importance(decomposition, groups=None, return_keys=False, varian
     D = len(additive_keys)
     shape_decomposition = decomposition[additive_keys[0]].shape
     assert len(shape_decomposition) == 2, "The decomposition must be anchored"
-    # assert shape_decomposition[0] == shape_decomposition[1], "The decomposition must have foreground=background"
     
     # Assert if explanations are regional
     if groups is None:
@@ -600,7 +603,7 @@ def get_PDP_PFI_importance(decomposition, groups=None, return_keys=False, varian
     elif isinstance(groups, np.ndarray):
         assert shape_decomposition[0] == shape_decomposition[1], "Must have foreground=background when passing groups"
         n_groups = groups.max() + 1
-        assert shape_decomposition[0] == len(groups), "Each foreground element must have a group index"
+        assert shape_decomposition[0] == len(groups), "Each instance must have a group index"
     else:
         raise Exception("Groups must be None or a numpy array")
 
@@ -647,7 +650,7 @@ def get_H_interaction(decomposition, return_keys=False):
     decomposition : dict{Tuple: np.ndarray}
         An anchored decomposition with foreground=background so that `decomposition[(0,)].shape = (N, N)`
     return_keys : bool, default=False
-        whether or not to return the additive keys associated with each interaction index
+        whether to return the additive keys associated with each interaction index
     
     Returns
     -------
@@ -689,7 +692,8 @@ def get_h_add(decomposition, anchored=True):
     Returns
     -------
     h_add : np.ndarray
-        If anchored=True, this returns a (Nf, Nb) array. Otherwise, a (Nf,) array is returned
+        The additive decomposition summing the intercept and all main effects.
+        If anchored=True, is is a (Nf, Nb) array. Otherwise, a (Nf,) array is returned
     """
 
     keys = decomposition.keys()
@@ -717,7 +721,7 @@ def get_CoE(decomposition, anchored=True, foreground_preds=None):
         An anchored/interventional decomposition
     anchored : bool, default=True
         If True then the decomposition is anchored and if False the decomposition
-        is interventional
+        is interventional.
     foreground_preds : np.ndarray, default=None
         Array containing the model predictions at all foreground data points. When set
         to `None`, it is assumed that foreground=background and so these predictions can be 
