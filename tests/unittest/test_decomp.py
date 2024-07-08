@@ -6,6 +6,7 @@ import shap
 from shap.maskers import Independent
 
 from pyfd.decompositions import get_components_brute_force, get_components_adaptive
+from pyfd.decompositions import get_CoE, get_interventional_from_anchored
 from pyfd.shapley import lattice_shap
 
 
@@ -153,5 +154,21 @@ def test_adaptive():
 
 
 
+def test_components_utils():
+    """ Test the functions applied on top of decompositions """
+    N = 500
+    X, h = generate_problem(N)
+    decomp = get_components_brute_force(h, X, X)
+    decomp_interv = get_interventional_from_anchored(decomp)
+    assert np.isclose(decomp[()], decomp_interv[()]).all()
+    assert decomp_interv[(0,)].shape == (N,)
+    
+    coe_anchored = get_CoE(decomp, anchored=True)
+    coe_interv = get_CoE(decomp_interv, anchored=False)
+
+    assert np.isclose(coe_anchored, coe_interv)
+
+
+
 if __name__ == "__main__":
-    test_brute_force_IO()
+    test_components_utils()

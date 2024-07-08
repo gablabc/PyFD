@@ -742,3 +742,27 @@ def get_CoE(decomposition, anchored=True, foreground_preds=None):
     else:
         return factor * np.mean( (foreground_preds - h_add)**2 )
 
+
+def get_interventional_from_anchored(decomposition):
+    """
+    Transform an anchored decomposition into an interventional one to
+    save memory.
+    
+    Parameters
+    ----------
+    decomposition : dict{Tuple: np.ndarray}
+        An anchored decomposition `decomposition[(0,)].shape=(Nf, Nb)`.
+    Returns
+    -------
+    decomposition_ : dict{Tuple: np.ndarray}
+        An interventional decomposition `decomposition[(0,)].shape=(Nf,)`.
+    """
+
+    decomposition_ = {}
+    for key in decomposition.keys():
+        if len(key)== 0:
+            decomposition_[key] = deepcopy(decomposition[key])
+        else:
+            assert decomposition[key].ndim == 2, "The decomposition must be anchored"
+            decomposition_[key] = decomposition[key].mean(1)
+    return decomposition_
