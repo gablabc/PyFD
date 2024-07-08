@@ -23,17 +23,25 @@ def permutation_shap(h, foreground, background, Imap_inv=None, M=20, show_bar=Tr
     h : model X -> R
         A callable black box `h(X)`.
     foreground : (Nf, d) np.ndarray
-        The data points at which to evaluate the decomposition
+        The data points at which to evaluate the shapley values.
     background : (Nb, d) np.ndarray
-        The data points at which to anchor the decomposition
+        The data points at which to anchor the shapley values.
     Imap_inv : List(List(int)), default=None
         A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
         the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature
+    M : int, default=20
+        Number of permutations to sample.
+    show_bar : bool, default=True
+        Flag to decide if progress bar is shown.
+    reversed : bool, default=True
+        Flag to sample a permutation and its reverse.
+    return_nu_evals : bool, default=False
+        Flag to return the number of calls `nu(S)` for the coallitional game.
     
     Returns
     -------
     shapley_values : (Nf, n_features) np.ndarray
-        The interventional shapley values
+        The interventional shapley values.
     """
 
     # Setup Imap_inv
@@ -112,19 +120,23 @@ def lattice_shap(h, foreground, background, interactions, Imap_inv=None, show_ba
     h : model X -> R
         A callable black box `h(X)`.
     foreground : (Nf, d) np.ndarray
-        The data points at which to evaluate the decomposition
+        The data points at which to evaluate the shapley values.
     background : (Nb, d) np.ndarray
-        The data points at which to anchor the decomposition
+        The data points at which to anchor the shapley values.
     interactions : List(Tuple(int))
         List of tuples representing the lattice space.
     Imap_inv : List(List(int)), default=None
         A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
         the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature
+    show_bar : bool, default=True
+        Flag to decide if progress bar is shown.
+    return_nu_evals : bool, default=False
+        Flag to return the number of calls `nu(S)` for the coallitional game.
     
     Returns
     -------
     shapley_values : (Nf, n_features) np.ndarray
-        The interventional shapley values
+        The interventional shapley values.
     """
     
     assert type(interactions) == list, "interactions must be a list of tuples"
@@ -176,7 +188,7 @@ def lattice_shap(h, foreground, background, interactions, Imap_inv=None, show_ba
 
 def interventional_treeshap(model, foreground, background, Imap_inv=None, anchored=False, algorithm="recurse"):
     """ 
-    Compute the Interventional Shapley Values with the TreeSHAP algorithm
+    Compute the Interventional Shapley Values with the TreeSHAP algorithm.
 
     Parameters
     ----------
@@ -184,9 +196,9 @@ def interventional_treeshap(model, foreground, background, Imap_inv=None, anchor
         A tree based machine learning model that we want to explain. XGBoost, LightGBM, CatBoost,
         and most tree-based scikit-learn models are supported.
     foreground : (Nf, d) np.ndarray
-        The data points at which to evaluate the decomposition
+        The data points at which to evaluate the shapley values.
     background : (Nb, d) np.ndarray
-        The data points at which to anchor the decomposition
+        The data points at which to anchor the shapley values.
     Imap_inv : List(List(int)), default=None
         A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
         the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature.
@@ -195,7 +207,7 @@ def interventional_treeshap(model, foreground, background, Imap_inv=None, anchor
     algorithm : string, default='recurse'
         The algorithm used to compute the shapley values, the options are
         - `recurse` with complexity `Nf Nb 2^min(depth, n_features)` can compute anchored and interventional
-        - `leaf` with complexity `(Nf+Nb) 2^min(depth, n_features)` can only compute interventional
+        - `leaf` with complexity `(Nf+Nb) 2^min(depth, n_features)` can only compute interventional.
 
     Returns
     -------
