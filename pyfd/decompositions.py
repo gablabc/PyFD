@@ -9,8 +9,8 @@ from copy import deepcopy
 
 from sklearn.linear_model import LinearRegression, Ridge, LogisticRegression, PoissonRegressor
 
-from .utils import check_Imap_inv, get_leaf_box, ravel, powerset
-from .utils import setup_linear, setup_brute_force, setup_treeshap
+from .utils import check_Imap_inv, get_leaf_box, ravel, powerset, key_from_term
+from .utils import get_term_bin_weights, setup_linear, setup_brute_force, setup_treeshap
 
 
 
@@ -67,8 +67,7 @@ def get_components_linear(h, foreground, background, Imap_inv=None):
 
 
 
-
-def get_components_ebm(h, foreground, background, Imap_inv=None):
+def get_components_ebm(h, foreground, background, Imap_inv=None, anchored=True):
     """
     Compute the Interventional Decomposition of an Explainable Boosting Machine (EBM)
 
@@ -83,47 +82,105 @@ def get_components_ebm(h, foreground, background, Imap_inv=None):
     Imap_inv : List(List(int)), default=None
         A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
         the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature.
+    anchored : bool, default=True
+        Flag to compute anchored decompositions or interventional decompositions. If anchored, a 
+        component is (Nf, Nb). If interventional, a component is (Nf,).
     
     Returns
     -------
     decomposition : dict{Tuple: np.ndarray}
-        The various components of the decomposition indexed via their feature subset e.g. `decomposition[(0,)]`
-        is a (Nf,) np.ndarray.
+        The various components of the decomposition indexed via their feature subset e.g. 
+        `decomposition[(0,)]` is a (Nf,) of (Nf, Nb) np.ndarray. This function returns all
+        main effects and pair-wise interactions involving the Imap_inv groups.
     """
-    from interpret.glassbox._ebm._bin import ebm_predict_scores, ebm_eval_terms
     from interpret.glassbox import ExplainableBoostingRegressor, ExplainableBoostingClassifier
+    from interpret.glassbox._ebm._bin import eval_terms
     
     EBM = [ExplainableBoostingRegressor, ExplainableBoostingClassifier]
 
     # Setup
-    predictor, foreground, background, Imap_inv = setup_linear(h, foreground, background, Imap_inv, EBM)
-
-    # For EBMs we map feature j to its shape function h_j
-    # Temporary !!!!! Eventually we will add interaction terms to the components
-    assert max([len(term) for term in predictor.term_features_]) == 1, "For now PyFD only supports additive EBMs"
-    preds_background = ebm_predict_scores(
-            background, background.shape[0],
-            predictor.feature_names_in_, predictor.feature_types_in_,
-            predictor.bins_, predictor.intercept_, predictor.term_scores_, predictor.term_features_
-    )
-    background = ebm_eval_terms(
-            background, background.shape[0], 1, 
-            predictor.feature_names_in_, predictor.feature_types_in_,
-            predictor.bins_, predictor.term_scores_, predictor.term_features_
-    )
-    foreground = ebm_eval_terms(
-            foreground, foreground.shape[0], 1,
-            predictor.feature_names_in_, predictor.feature_types_in_,
-            predictor.bins_, predictor.term_scores_, predictor.term_features_
-    )
-
+    h, foreground, background, Imap_inv = setup_linear(h, foreground, background, Imap_inv, EBM)
+    X = np.vstack((background, foreground))
+    Nf = foreground.shape[0]
+    Nb = background.shape[0]
     decomposition = {}
-    decomposition[()] = preds_background.mean()
+    decomposition[()] = h.intercept_ * np.ones((Nb,))
+    component_shape = (Nf, Nb) if anchored else (Nf,)
+    
+    # Iterate over all terms in the EBM
+    for term_idx, bin_indexes in eval_terms(X, Nf+Nb, h.feature_names_in_, 
+                            h.feature_types_in_, h.bins_, h.term_features_):  
 
-    # Compute the additive components
-    for j in range(len(Imap_inv)):
-        Imap_inv_j = np.array(Imap_inv[j])
-        decomposition[(j,)] = np.sum((foreground[:, Imap_inv_j] - background[:, Imap_inv_j].mean(0)), axis=1)
+        # Find out to which subsets of features this term contributes to
+        term = h.term_features_[term_idx]
+        key = key_from_term(term, Imap_inv)
+        if not key in decomposition.keys():
+            decomposition[key] = np.zeros(component_shape)
+        
+        # () term h(z)
+        term_scores = h.term_scores_[term_idx]
+        scores = term_scores[tuple(bin_indexes)]
+        hz = scores[:Nb]
+        hx = scores[Nb:]
+        # When anchored, we do broadcasting to get (Nf, Nb) components
+        if anchored:
+            hz = hz.reshape((1, -1))
+            hx = hx.reshape((-1, 1))
+        decomposition[()] += hz.ravel()
+        del scores
+
+        # Empty key only contribute to the () term
+        if len(key) == 0:
+            continue
+
+        # For interventional, hz now represents E[h(z)]
+        if not anchored:
+            hz = hz.mean()
+        
+        # A main effect
+        if len(term) == 1:
+            # (i,) term is h(x) - h(z)
+            decomposition[key] -= hz
+            decomposition[key] += hx
+        # A (i, j) pair-wise interaction
+        else:
+            if anchored:
+                # (Nf, Nb) matrices
+                hxizj = term_scores[bin_indexes[0][Nb:].reshape((-1, 1)),
+                                    bin_indexes[1][:Nb].reshape((1, -1))]
+                hzixj = term_scores[bin_indexes[0][:Nb].reshape((1, -1)),
+                                    bin_indexes[1][Nb:].reshape((-1, 1))]
+            else:
+                # (Nf,) matrices
+                term_bin_weights = get_term_bin_weights(h, term_idx, bin_indexes, Nb)
+                hxizj = np.average(term_scores, axis=1, weights=term_bin_weights.sum(0))[bin_indexes[0][Nb:]]
+                hzixj = np.average(term_scores, axis=0, weights=term_bin_weights.sum(1))[bin_indexes[1][Nb:]]
+            
+            if len(key) == 1:
+                # A main effect is being computed but we must know if the
+                # two idxs in the term are part of a single group
+                # 1) Single Group
+                if term[0] in Imap_inv[key[0]] and term[1] in Imap_inv[key[0]]:
+                    decomposition[key] += hx - hz
+                # 2) Main effect for first idx
+                elif term[0] in Imap_inv[key[0]]:
+                    decomposition[key] += hxizj - hz
+                # 3) Main effect for second idx
+                else:
+                    decomposition[key] += hzixj - hz
+            else:
+                # -h(zi, xj) ___ h(xi, xj)
+                #      |             |
+                #  h(zi, zj) ___ h(xi, zj)
+                #
+                # (i, j) term h(x) - h(xi, zj) - h(zi, xj) + h(z)
+                decomposition[key] += hx - hxizj - hzixj + hz
+                # (i,) term  h(xi, zj) - h(z)
+                decomposition[key[:1]] -= hz
+                decomposition[key[:1]] += hxizj
+                # (j,) term  h(zi, xj) - h(z)
+                decomposition[key[1:]] -= hz
+                decomposition[key[1:]] += hzixj
     
     return decomposition
 
@@ -257,27 +314,19 @@ def get_components_brute_force(h, foreground, background, Imap_inv=None, interac
             unique, indices = unique_feature_values[key[0]]
             x_idxs = indices
             result = _get_anchored_components_u(decomposition, h, key, Imap_inv, x_idxs, foreground, background)
-            if not anchored:
-                decomposition[key] = np.zeros((N_eval,))
-            else:
-                decomposition[key] = np.zeros((N_eval, N_ref))
+            decomposition[key] = np.zeros((N_eval, N_ref))
             for i, value in enumerate(unique):
                 select = foreground[:, Imap_inv[key[0]][0]]==value
-                # Interventional decompositions require averaging along axis=1
-                if not anchored:
-                    decomposition[key][select] = result[i].mean()
-                else:
-                    decomposition[key][select] = result[i]
+                decomposition[key][select] = result[i]
         # Or Iterate over all N_eval foreground points
         else:
             x_idxs = np.arange(N_eval)
-            result = _get_anchored_components_u(decomposition, h, key, Imap_inv, x_idxs, foreground, background)
-            # Interventional decompositions require averaging along axis=1
-            if not anchored:
-                decomposition[key] = result.mean(1)
-            else:
-                decomposition[key] = result
-    return decomposition
+            decomposition[key] = _get_anchored_components_u(decomposition, h, key, Imap_inv, x_idxs, 
+                                                                            foreground, background)
+    if anchored:
+        return decomposition
+    else:
+        return get_interventional_from_anchored(decomposition)
 
 
 

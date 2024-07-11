@@ -96,6 +96,22 @@ def ravel(tuples):
 
 
 
+def key_from_term(term, Imap_inv):
+    """
+    TODO 
+    """
+    D = len(Imap_inv)
+    key = ()
+    for idx in term:
+        caught_feature = np.where([idx in Imap_inv[i] for i in range(D)])[0]
+        if caught_feature.size == 1:
+            caught_feature = int(caught_feature)
+            if caught_feature not in key:
+                key = tuple(sorted(key + (caught_feature,)))
+    return key
+
+
+
 def check_Imap_inv(Imap_inv, d):
     if Imap_inv is None:
         Imap_inv = [[i] for i in range(d)]
@@ -224,6 +240,33 @@ def setup_linear(h, foreground, background, Imap_inv, acceptable_types):
         predictor = h
 
     return predictor, foreground, background, Imap_inv
+
+
+
+def get_term_bin_weights(ebm, term_idx, bin_indexes, Nb):
+    """ Adaptation of the make_bin_weights function of InterpretML """
+    
+    feature_idxs = ebm.term_features_[term_idx]
+    multiple = 1
+    dimensions = []
+    for dimension_idx in range(len(feature_idxs) - 1, -1, -1):
+        feature_idx = feature_idxs[dimension_idx]
+        bin_levels = ebm.bins_[feature_idx]
+        feature_bins = bin_levels[min(len(bin_levels), len(feature_idxs)) - 1]
+        n_bins = len(feature_bins) + 3
+
+        dimensions.append(n_bins)
+        dim_data = deepcopy(bin_indexes[dimension_idx][:Nb])
+        # dim_data = np.where(dim_data < 0, n_bins - 1, dim_data)
+        if multiple == 1:
+            flat_indexes = dim_data
+        else:
+            flat_indexes += dim_data * multiple
+        multiple *= n_bins
+    dimensions = tuple(reversed(dimensions))
+    term_bin_weights = np.bincount(flat_indexes, minlength=multiple)
+    term_bin_weights = term_bin_weights.astype(np.float64, copy=False)
+    return term_bin_weights.reshape(dimensions) / Nb
 
 
 
