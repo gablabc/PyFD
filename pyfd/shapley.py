@@ -10,6 +10,48 @@ from .utils import check_Imap_inv, setup_treeshap, get_leaf_box, ravel, powerset
 
 
 #######################################################################################
+#                               Precomputed Decomposition
+#######################################################################################
+
+
+
+def shap_from_decomposition(decomposition):
+    """
+    Compute the Shapley Values from a provided functional decomposition
+
+    Parameters
+    ----------
+    decomposition : dict{Tuple: np.ndarray}
+        The various components of the decomposition indexed via their feature subset e.g. 
+        `decomposition[(1, 2, 3)]` returns the 3-way interactions between features 1, 2 and 3.
+        Components can have shape (Nf,) or (Nf, Nb)
+    
+    Returns
+    -------
+    shapley_values : (Nf, n_features) np.ndarray
+        The interventional shapley values.
+    """
+
+    # Setup
+    anchored = decomposition[(0,)].ndim == 2
+    Nf = decomposition[(0,)].shape[0]
+    keys = decomposition.keys()
+    D = len([key for key in keys if len(key)==1])
+    shap_values = np.zeros((Nf, D))
+    for key in keys:
+        if len(key) == 0:
+            continue
+        for feature in key:
+            if anchored:
+                shap_values[:, feature] += decomposition[key].mean(1) / len(key)
+            else:
+                shap_values[:, feature] += decomposition[key] / len(key)
+    
+    return shap_values
+
+
+
+#######################################################################################
 #                                    Model-Agnostic
 #######################################################################################
 
@@ -304,8 +346,6 @@ def interventional_treeshap(model, foreground, background, Imap_inv=None, anchor
         raise Exception("Invalid algorithm, pick from `recurse` or `leaf`")
 
     return results
-
-
 
 
 
