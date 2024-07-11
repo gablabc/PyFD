@@ -611,7 +611,10 @@ def decomposition_graph(decomposition, feature_names):
     U = [key for key in decomposition.keys() if len(key)>0]
     n_ranks = max([len(u) for u in U])
     ref_var = np.var(decomposition[()])
-    var = {u : 100 * np.mean(decomposition[u].mean(1)**2) / ref_var for u in U}
+    if decomposition[(0,)].ndim == 2:
+        var = {u : 100 * np.mean(decomposition[u].mean(1)**2) / ref_var for u in U}
+    else:
+        var = {u : 100 * np.mean(decomposition[u]**2) / ref_var for u in U}
     max_var = max(list(var.values()))
     ranks_set = []
     for _ in range(n_ranks):
