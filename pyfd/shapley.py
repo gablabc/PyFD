@@ -281,9 +281,8 @@ def interventional_treeshap(model, foreground, background, Imap_inv=None, anchor
 
     ####### Wrap C / Python #######
 
-    # Find the shared library, the path depends on the platform and Python version    
-    project_root = os.path.dirname(__file__).split('pyfd')[0]
-    libfile = glob.glob(os.path.join(project_root, 'treeshap*.so'))[0]
+    # Find the shared library    
+    libfile = glob.glob(os.path.join(os.path.dirname(__file__), 'treeshap*.so'))[0]
 
     # Open the shared library
     mylib = ctypes.CDLL(libfile)
@@ -393,9 +392,8 @@ def taylor_treeshap(model, foreground, background, Imap_inv=None):
 
     ####### Wrap C / Python #######
 
-    # Find the shared library, the path depends on the platform and Python version    
-    project_root = os.path.dirname(__file__).split('pyfd')[0]
-    libfile = glob.glob(os.path.join(project_root, 'treeshap*.so'))[0]
+    # Find the shared library
+    libfile = glob.glob(os.path.join(os.path.dirname(__file__), 'treeshap*.so'))[0]
 
     # Open the shared library
     mylib = ctypes.CDLL(libfile)

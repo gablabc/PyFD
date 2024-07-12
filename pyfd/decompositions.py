@@ -502,9 +502,8 @@ def get_components_tree(model, foreground, background, Imap_inv=None, anchored=F
 
     ####### Wrap C / Python #######
 
-    # Find the shared library, the path depends on the platform and Python version    
-    project_root = os.path.dirname(__file__).split('pyfd')[0]
-    libfile = glob.glob(os.path.join(project_root, 'treeshap*.so'))[0]
+    # Find the shared library
+    libfile = glob.glob(os.path.join(os.path.dirname(__file__), 'treeshap*.so'))[0]
 
     # Open the shared library
     mylib = ctypes.CDLL(libfile)
@@ -642,6 +641,7 @@ def get_PDP_PFI_importance(decomposition, groups=None, return_keys=False, varian
     # Get the additive decomposition
     keys = decomposition.keys()
     additive_keys = [key for key in keys if len(key)==1]
+    additive_keys = sorted(additive_keys, key=lambda x: x[0])
     D = len(additive_keys)
     shape_decomposition = decomposition[additive_keys[0]].shape
     assert len(shape_decomposition) == 2, "The decomposition must be anchored"
