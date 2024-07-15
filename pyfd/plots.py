@@ -33,23 +33,76 @@ COLORS = ['blue', 'red', 'green', 'orange',
 def abs_map_xerr(phi, xerr):
     """
     Map xerr on phi to xerr on |phi|
+
+    Arguments
+    ---------
+    phi : (stacked, n_features) np.ndarray
+    xerr : (stacked, 2, n_features) np.ndarray
+
+    Returns
+    -------
+    abs_xerr (stacked, 2, n_features) nd.ndarray
     """
-    # Force the xerr to be a 2d array
-    if xerr.ndim == 1:
-        xerr = np.vstack((xerr, xerr))
-    FI = np.abs(phi)
-    cross_origin = ~( np.sign(phi-xerr[0]) == np.sign(phi+xerr[1]) )
+    stacked = phi.shape[0]
+    cross_origin = ~( np.sign(phi-xerr[:, 0, :]) == np.sign(phi+xerr[:, 1, :]) ) # (stacked, n_features)
     # Min and Max of CIs
-    map_bottom = np.abs(phi - xerr[0])
-    map_top = np.abs(phi + xerr[1])
-    min_CI  = np.minimum(map_bottom, map_top)
-    max_CI  = np.maximum(map_bottom, map_top)
+    map_bottom = np.abs(phi - xerr[:, 0, :])  # (stacked, n_features)
+    map_top = np.abs(phi + xerr[:, 1, :])     # (stacked, n_features)
+    min_CI  = np.minimum(map_bottom, map_top) # (stacked, n_features)
+    max_CI  = np.maximum(map_bottom, map_top) # (stacked, n_features)
     # Minimum of CIs that cross origin is zero
     min_CI[cross_origin] = 0
-    assert (min_CI <= FI).all() and (FI <= max_CI).all() 
+
     # Transform a CI to xerr
-    return np.abs(FI - np.vstack((min_CI, max_CI)))
+    return np.abs(np.abs(phi).reshape(stacked, 1, -1) - np.stack((min_CI, max_CI), axis=1))
+
+
+
+def check_bar_args(phis, feature_labels, xerr):
+    """ 
+    After this function, phis is a (stacked, n_features) numpy array while
+    xerr is a (stacked, 2, n_features) array
+    """
+    # Are there multiple feature labels?
+    assert type(feature_labels) == list, "feature_labels must be a list"
+    if type(feature_labels[0]) == list:
+        assert type(feature_labels[0][0] ) == str, "feature_labels must be a `List(List(str))`"
+        n_features = len(feature_labels[0])
+        multiple_labels = True
+    else:
+        assert type(feature_labels[0]) == str, "feature_labels must be `List(str)`"
+        n_features = len(feature_labels)
+        multiple_labels = False
     
+    # Check phis
+    if type(phis) in [list, tuple]:
+        assert type(phis[0]) == np.ndarray, "phis must be a list of np.ndarray"
+        phis = np.vstack(phis)
+    else:
+        assert type(phis) == np.ndarray, "phis must be a np.ndarray"
+        if phis.ndim == 1:
+            phis = phis.reshape((1, -1))
+    assert phis.shape[1] == n_features, "phis must involved `n_features` features"
+    stacked_bars = phis.shape[0]
+    
+    # Check xerr
+    if xerr is not None:
+        if type(xerr) in [list, tuple]:
+            assert len(xerr) == stacked_bars, "xerr must be a list of lenght `stacked`"
+            assert type(xerr[0]) == np.ndarray, "xerr must contain np.ndarrays"
+            assert xerr[0].shape in [(n_features,), (2, n_features)]
+            if xerr[0].shape == (n_features, ):
+                xerr = [np.vstack((error, error)) for error in xerr]
+            xerr = np.stack(xerr, axis=0)
+        else:
+            assert type(xerr) == np.ndarray
+            assert xerr.shape in [(n_features,), (2, n_features)]
+            assert stacked_bars == 1, "xerr can only be passed as np.ndarray if no bars are stacked"
+            if xerr.shape == (n_features, ):
+                xerr = np.vstack((xerr, xerr)).reshape((1, 2, -1))
+            else:
+                xerr = xerr.reshape((1, 2, -1))
+    return phis, xerr, multiple_labels
 
 
 
@@ -59,50 +112,30 @@ def bar(phis, feature_labels, threshold=None, xerr=None, absolute=False, ax=None
 
     Parameters
     ----------
-    phis : (n_features,) or (stacks, n_features)`np.array`
-        Feature importance to plot as bars. If a `List(np.array)` is provided, or
+    phis : (n_features,) or (stacks, n_features) `np.ndarray`
+        Feature importance to plot as bars. If a `List(np.ndarray)` is provided, or
         the array is 2 dimensional, then bars are placed side-by-side.
     feature_labels : `List(string)`
-        Name of the features shown no the y-axis. If a `[List(string), List(string)]`
-        is provided, then the labels are shown left and right.
+        Name of the features shown on the y-axis. If a `[List(string), List(string)]`
+        is provided, then the labels are shown on the left and right.
     threshold: `float`, default=None
         Show a threshold of significance
-    xerr: `np.array` or `List(np.array)`, default=None
-        If not *None*, add horizontal vertical errorbars to the bar tips.
+    xerr: `np.ndarray` or `List(np.ndarray)`, default=None
+        If not `None`, add horizontal errorbars to the bars.
         When a list is provided, the error bars are shown for each stacked bar.
         The values are +/- sizes relative to the data:
-
         - shape(N,): symmetric +/- values for each bar
         - shape(2, N): Separate - and + values for each bar. First row
-            contains the lower errors, the second row contains the upper
-            errors.
-
+            is the lower errors, the second row is the upper errors.
+    
     absolute `bool`, default=False
         Rank with respect to the absolute value of the importance
     ax : `pyplot.axis`
         Add the plots to a pre-existing axis
     """
-    # Check phis
-    if type(phis) in [list, tuple]:
-        assert type(phis[0]) == np.ndarray, "phis must be a list of np.array"
-        phis = np.vstack(phis)
-        stacked_bars = len(phis)
-    else:
-        assert type(phis) == np.ndarray, "phis must be a np.array"
-        if phis.ndim == 1:
-            phis = phis.reshape((1, -1))
-            stacked_bars = 1
-        else:
-            assert phis.shape[1] == len(feature_labels), "phis must be a (stacked, n_features) array"
-            stacked_bars = phis.shape[0]
-    
-    # Are there multiple feature labels?
-    if type(feature_labels[0]) == list:
-        num_features = len(feature_labels[0])
-        multiple_labels = True
-    else:
-        num_features = len(feature_labels)
-        multiple_labels = False
+    # Check the input arguments
+    phis, xerr, multiple_labels = check_bar_args(phis, feature_labels, xerr)
+    stacked_bars, n_features = phis.shape
 
     # Plotting the abs value of the phis
     if absolute:
@@ -138,7 +171,7 @@ def bar(phis, feature_labels, threshold=None, xerr=None, absolute=False, ax=None
         shift =  [ (i+0.5)*bar_width for i in range(stacked_bars//2)[::-1]]\
                 +[-(i+0.5)*bar_width for i in range(stacked_bars//2)]
     else:
-        shift = [ (i+1)*bar_width for i in range(stacked_bars//2)[::-1]] + [0]\
+        shift =  [ (i+1)*bar_width for i in range(stacked_bars//2)[::-1]] + [0]\
                 +[-(i+1)*bar_width for i in range(stacked_bars//2)]
     
     # Get DEEL colors
@@ -150,19 +183,17 @@ def bar(phis, feature_labels, threshold=None, xerr=None, absolute=False, ax=None
         colors = {}
         colors['pos'] = color
         colors['neg'] = color
-
-    # Error bars
-    if xerr is not None:
-        if xerr.ndim == 2 and xerr.shape[0] == 2:
-            xerr = xerr[:, ordered_features]
-        else:
-            xerr = xerr[ordered_features]
-        
+    
     # Plot the bars with err
     for s in range(stacked_bars):
+        # Error bars
+        if xerr is not None:
+            error_bar = xerr[s][ :,  ordered_features]
+        else:
+            error_bar = None
         ax.barh(
-            y_pos+shift[s], bar_mapper(phis[s, ordered_features]),
-            bar_width, xerr=xerr, align='center',
+            y_pos + shift[s], bar_mapper(phis[s, ordered_features]),
+            bar_width, xerr=error_bar, align='center',
             color=[colors['neg'] if phis[s, ordered_features[j]] <= 0 
                     else colors['pos'] for j in range(len(y_pos))], 
             edgecolor=(0.88,0.89,0.92), capsize=5, alpha=1-0.75/stacked_bars*s)
@@ -184,11 +215,11 @@ def bar(phis, feature_labels, threshold=None, xerr=None, absolute=False, ax=None
         ax.set_yticklabels(yticklabels, fontsize=15)
 
     # put horizontal lines for each feature row
-    for i in range(num_features):
+    for i in range(n_features):
         ax.axhline(i, color="k", lw=0.5, alpha=0.5, zorder=-1)
 
     xmin,xmax = ax.get_xlim()
-    ax.set_ylim(-0.5, num_features-0.5)
+    ax.set_ylim(-0.5, n_features-0.5)
     
     if negative_phis:
         ax.set_xlim(xmin - (xmax-xmin)*0.05, xmax + (xmax-xmin)*0.05)

@@ -1,4 +1,5 @@
 *.pdf
+*.png
 *.csv
 *.pyc
 *.joblib
