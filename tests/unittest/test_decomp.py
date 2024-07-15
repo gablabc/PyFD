@@ -10,10 +10,13 @@ from pyfd.decompositions import get_CoE, get_interventional_from_anchored
 from pyfd.shapley import lattice_shap
 
 
-def generate_problem(N):
+def generate_problem(N, discrete=False):
     # Generate the data
     np.random.seed(42)
-    X = np.random.uniform(-1, 1, size=(N, 5))
+    if discrete:
+        X = np.random.randint(0, 5, size=(N, 5))
+    else:
+        X = np.random.uniform(-1, 1, size=(N, 5))
     def h(X):
         return X[:, 0] + X[:, 1] + 5 * X[:, 0] * X[:, 1] + 0.5 * np.sin(2*np.pi*X[:, 2])
     return X, h
@@ -41,10 +44,11 @@ def compare_adaptive_classical_SHAP(h, U, X):
 #############################################################################################################
 
 
-def test_brute_force_IO():
+@pytest.mark.parametrize("discrete", [False, True])
+def test_brute_force_IO(discrete):
     """ Test the consistency of the output type depending on various inputs """
     N = 500
-    X, h = generate_problem(N)
+    X, h = generate_problem(N, discrete)
 
     # test ICE
     x_lin = np.linspace(-1, 1, 100)
@@ -126,13 +130,16 @@ def test_brute_force_exceptions():
         get_components_brute_force(h, X, X, anchored=True, interactions=[(0,), (1,), (2,), (0, 1), (0, 1, 2)])
 
 
-
-def test_adaptive():
+@pytest.mark.parametrize("discrete", [False, True])
+def test_adaptive(discrete):
     """ Assert that adaptive decompositions return the ground truth """
 
     # Generate the data
     np.random.seed(42)
-    X = np.random.uniform(0, 1, size=(1000, 8))
+    if discrete:
+        X = np.random.randint(0, 5, size=(1000, 8))
+    else:
+        X = np.random.uniform(0, 1, size=(1000, 8))
 
     def h(X):
         return X[:, 0] * X[:, 1] + 2 * X[:, 2] * X[:, 3]
@@ -153,11 +160,11 @@ def test_adaptive():
     compare_adaptive_classical_SHAP(h, U, X)
 
 
-
-def test_components_utils():
+@pytest.mark.parametrize("discrete", [False, True])
+def test_components_utils(discrete):
     """ Test the functions applied on top of decompositions """
     N = 500
-    X, h = generate_problem(N)
+    X, h = generate_problem(N, discrete)
     decomp = get_components_brute_force(h, X, X)
     decomp_interv = get_interventional_from_anchored(decomp)
     assert np.isclose(decomp[()], decomp_interv[()]).all()
@@ -171,4 +178,4 @@ def test_components_utils():
 
 
 if __name__ == "__main__":
-    test_components_utils()
+    test_components_utils(True)
