@@ -607,7 +607,13 @@ def get_components_tree(model, foreground, background, Imap_inv=None, anchored=F
 
 
 
-def get_PDP_PFI_importance(decomposition, groups=None, return_keys=False, variance=False, show_bar=False):
+#######################################################################################
+#                                       Utilities
+####################################################################################### 
+
+
+
+def get_PDP_PFI_importance(decomposition, variance=False, bootstrap_error=False, return_keys=False):
     """
     Compute PDP and PFI feature importance given an anchored decomposition
 
@@ -615,26 +621,25 @@ def get_PDP_PFI_importance(decomposition, groups=None, return_keys=False, varian
     ----------
     decomposition : dict{Tuple: np.ndarray}
         An anchored decomposition so that `decomposition[(0,)].shape = (Nf, Nb)`.
-    groups : (N,) np.ndarray, default=None
-        An array of N integers (values in {0, 1, 2, n_groups-1}) representing the group index of 
-        each datum. Is only applicable if foreground=background and the decomposition has shape (N, N).
+    variance : bool, default=False
+        return the variance-based importance metrics PDP-Variance and Marginal-Sobol. 
+        Both of which are inviariant to correlation between feature j and the remaining features.
+    bootstrap_error : bool, default=False
+        Return boostrap -/+ 95% error estimates.
     return_keys : bool, default=False
         whether to return the additive keys associated with each interaction index.
-    variance : bool, default=False
-        return the variance-based importance metrics PDP-Variance and Marginal-Sobol. Both of which are inviariant
-        to the correlation between feature j and the remaining features.
-    show_bar : bool, default=True
-        Show the progress bar.
 
     Returns
     -------
-    I_PDP : np.ndarray
-        PDP feature importance. If `groups=None` then this array is (n_features,). Otherwise it has 
-        shape (n_groups, n_features).
-    I_PFI : np.ndarray
-        PFI feature importance. If `groups=None` then this array is (n_features,). Otherwise it has 
-        shape (n_groups, n_features).
-    additive_keys : List(List(int))
+    I_PDP : (n_features,) np.ndarray
+        PDP feature importance.
+    I_PFI : (n_features,) np.ndarray
+        PFI feature importance.
+    error_PDP : (2, n_features) np.ndarray, optional
+        -/+ bootstrap errors for PDP importance
+    error_PFI : (2, n_features) np.ndarray, optional
+        -/+ bootstrap errors for PFI importance
+    additive_keys : List(List(int)), optional
         The key associated with each feature importance.
     """
 
@@ -645,48 +650,52 @@ def get_PDP_PFI_importance(decomposition, groups=None, return_keys=False, varian
     D = len(additive_keys)
     shape_decomposition = decomposition[additive_keys[0]].shape
     assert len(shape_decomposition) == 2, "The decomposition must be anchored"
-    
-    # Assert if explanations are regional
-    if groups is None:
-        n_groups = 1
-    elif isinstance(groups, np.ndarray):
-        assert shape_decomposition[0] == shape_decomposition[1], "Must have foreground=background when passing groups"
-        n_groups = groups.max() + 1
-        assert shape_decomposition[0] == len(groups), "Each instance must have a group index"
-    else:
-        raise Exception("Groups must be None or a numpy array")
 
-    # No grouping
-    if n_groups == 1:
-        I_PDP = np.zeros(D)
-        I_PFI = np.zeros(D)
-        for d in tqdm(range(D), desc="PDP/PFI Importance", disable=not show_bar):
-            if variance:
-                I_PDP[d] = decomposition[additive_keys[d]].mean(1).var()
-                I_PFI[d] = decomposition[additive_keys[d]].var(0).mean()
-            else:
-                I_PDP[d] = np.mean(decomposition[additive_keys[d]].mean(1)**2)
-                I_PFI[d] = np.mean(decomposition[additive_keys[d]].mean(0)**2)
-    # Separate feature importance for each group
-    else:
-        I_PDP = np.zeros((n_groups, D))
-        I_PFI = np.zeros((n_groups, D))
-        for group_id in range(n_groups):
-            select = np.where(groups==group_id)[0].reshape((-1, 1))
-            for d in tqdm(range(D), desc="PDP/PFI Importance", disable=not show_bar):
-                H = decomposition[additive_keys[d]][select, select.T]
-                I_PDP[group_id, d] = np.mean(H.mean(1)**2)
-                I_PFI[group_id, d] = np.mean(H.mean(0)**2)
-                if variance:
-                    I_PDP[group_id, d] = H.mean(1).var()
-                    I_PFI[group_id, d] = H.var(0).mean()
-                else:
-                    I_PDP[group_id, d] = np.mean(H.mean(1)**2)
-                    I_PFI[group_id, d] = np.mean(H.mean(0)**2)
+    # Feature importance
+    I_PDP = np.zeros(D)
+    I_PFI = np.zeros(D)
+    for d in range(D):
+        if variance:
+            I_PDP[d] = np.sqrt(decomposition[additive_keys[d]].mean(1).var())
+            I_PFI[d] = np.sqrt(decomposition[additive_keys[d]].var(0).mean())
+        else:
+            I_PDP[d] = np.sqrt(np.mean(decomposition[additive_keys[d]].mean(1)**2))
+            I_PFI[d] = np.sqrt(np.mean(decomposition[additive_keys[d]].mean(0)**2))
     
+    if not bootstrap_error:
+        if return_keys:
+            return I_PDP, I_PFI, additive_keys
+        else:
+            return I_PDP, I_PFI
+    
+    # Bootstrap error estimates
+    N, M = shape_decomposition
+    Error_PDP = np.zeros((2, D))
+    Error_PFI = np.zeros((2, D))
+    for d in tqdm(range(D), desc="Bootstrap Error Estimates"):
+        I_PDP_distr = np.zeros((100,))
+        I_PFI_distr = np.zeros((100,))
+        for rep in range(10):
+            samples = np.random.choice(range(N), size=(N, 1, 10))
+            if N == M:
+                samples_T = samples.reshape((1, N, 10))
+            else:
+                samples_T = np.random.choice(range(M), size=(1, M, 10))
+            boostrapped_data = decomposition[additive_keys[d]][samples, samples_T]
+            if variance:
+                I_PDP_distr[10*rep:10*(rep+1)] = np.sqrt(boostrapped_data.mean(1).var(0))
+                I_PFI_distr[10*rep:10*(rep+1)] = np.sqrt(boostrapped_data.var(0).mean(0))
+            else:
+                I_PDP_distr[10*rep:10*(rep+1)] = np.sqrt(np.mean(boostrapped_data.mean(1)**2, axis=0))
+                I_PFI_distr[10*rep:10*(rep+1)] = np.sqrt(np.mean(boostrapped_data.mean(0)**2, axis=0))
+        Error_PDP[0, d] = max(0, I_PDP[d] - np.quantile(I_PDP_distr, q=0.05))
+        Error_PDP[1, d] = max(0, np.quantile(I_PDP_distr, q=0.95) - I_PDP[d])
+        Error_PFI[0, d] = max(0, I_PFI[d] - np.quantile(I_PFI_distr, q=0.05))
+        Error_PFI[1, d] = max(0, np.quantile(I_PFI_distr, q=0.95) - I_PFI[d])
     if return_keys:
-        return I_PDP, I_PFI, additive_keys
-    return I_PDP, I_PFI
+        return I_PDP, I_PFI, Error_PDP, Error_PFI, additive_keys
+    return I_PDP, I_PFI, Error_PDP, Error_PFI
+
 
 
 def get_H_interaction(decomposition, return_keys=False):

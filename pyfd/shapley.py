@@ -17,7 +17,7 @@ from .utils import check_Imap_inv, setup_treeshap, get_leaf_box, ravel, powerset
 
 def shap_from_decomposition(decomposition):
     """
-    Compute the Shapley Values from a provided functional decomposition
+    Compute the Shapley Values from a provided functional decomposition.
 
     Parameters
     ----------
@@ -28,25 +28,20 @@ def shap_from_decomposition(decomposition):
     
     Returns
     -------
-    shapley_values : (Nf, n_features) np.ndarray
-        The interventional shapley values.
+    shapley_values : np.ndarray
+        Shapley Values array of shape (Nf, Nb, n_features) if the decomposition is anchored and
+        (Nf, n_features) otherwise. 
     """
 
     # Setup
-    anchored = decomposition[(0,)].ndim == 2
-    Nf = decomposition[(0,)].shape[0]
     keys = decomposition.keys()
     D = len([key for key in keys if len(key)==1])
-    shap_values = np.zeros((Nf, D))
+    shap_values = np.zeros(decomposition[(0,)].shape+(D,))
     for key in keys:
         if len(key) == 0:
             continue
         for feature in key:
-            if anchored:
-                shap_values[:, feature] += decomposition[key].mean(1) / len(key)
-            else:
-                shap_values[:, feature] += decomposition[key] / len(key)
-    
+            shap_values[..., feature] += decomposition[key] / len(key)
     return shap_values
 
 
@@ -419,3 +414,58 @@ def taylor_treeshap(model, foreground, background, Imap_inv=None):
                                 ensemble.children_right, results)
 
     return results
+
+
+
+#######################################################################################
+#                                       Utilities
+####################################################################################### 
+
+
+
+def get_SHAP_importance(shapley_values, p=2, bootstrap_error=False):
+    """
+    Aggregate Shapley Values to get global feature importance.
+
+    Parameters
+    ----------
+    shapley_values : np.ndarray
+        Array of shape (Nf, Nb, n_features) or (Nf, n_features).
+    bootstrap_error : bool, default=False
+        Return boostrap -/+ 95% error estimates. This requires anchored SHAP values of
+        shape (Nf, Nf, n_features) with foreground=background.
+
+    Returns
+    -------
+    I_PDP : (n_features,) np.ndarray
+        PDP feature importance.
+    error_PFI : (2, n_features) np.ndarray, optional
+        -/+ bootstrap errors for PFI importance
+    """
+    # Get the SHAP feature importance
+    anchored = shapley_values.ndim == 3
+    if anchored:
+        I_SHAP = np.mean(np.abs(np.mean(shapley_values, axis=1))**p, axis=0)**(1/p)
+    else:
+        I_SHAP = np.mean(np.abs(shapley_values)**p, axis=0)**(1/p)
+    if not bootstrap_error:
+        return I_SHAP
+    if not anchored:
+        raise Exception("Boostrapping requires anchored Shapley Values")
+    
+    # Compute bootstrap error estimates
+    N, M, D = shapley_values.shape
+    Error_SHAP = np.zeros((2, D))
+    for d in tqdm(range(D), desc="Bootstrap Error Estimate"):
+        I_SHAP_distr = np.zeros((100,))
+        for rep in range(10):
+            samples = np.random.choice(range(N), size=(N, 1, 10))
+            if N == M:
+                samples_T = samples.reshape((1, N, 10))
+            else:
+                samples_T = np.random.choice(range(M), size=(1, M, 10))
+            bootstrap_data = shapley_values[..., d][samples, samples_T]
+            I_SHAP_distr[10*rep:10*(rep+1)] = np.mean(np.abs(bootstrap_data.mean(1))**p, axis=0)**(1/p)
+        Error_SHAP[0, d] = max(0, I_SHAP[d] - np.quantile(I_SHAP_distr, q=0.05))
+        Error_SHAP[1, d] = max(0, np.quantile(I_SHAP_distr, q=0.95) - I_SHAP[d])
+    return I_SHAP, Error_SHAP
