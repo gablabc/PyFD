@@ -9,8 +9,9 @@ from shap.maskers import Independent
 
 from pyfd.features import Features
 from pyfd.fd_trees import CoE_Tree, PDP_PFI_Tree, GADGET_PDP
-from pyfd.decompositions import get_components_brute_force, get_PDP_PFI_importance
-from pyfd.plots import setup_pyplot_font, bar, attrib_scatter_plot, plot_legend
+from pyfd.decompositions import get_components_brute_force, get_PDP_PFI_importance, get_regional_decompositions
+from pyfd.shapley import get_SHAP_importance
+from pyfd.plots import setup_pyplot_font, bar, attrib_scatter_plot, plot_legend, COLORS
 
 setup_pyplot_font(15)
 
@@ -43,7 +44,7 @@ y = h(X)
 background = X
 masker = Independent(background, max_samples=background.shape[0])
 explainer = shap.explainers.Exact(h, masker)
-phis = explainer(background).values
+shapley_values = explainer(background).values
 
 # %% [markdown]
 # The resulting Shapley values can be compared to an additive decomposition
@@ -52,7 +53,7 @@ phis = explainer(background).values
 # %%
 
 decomposition = get_components_brute_force(h, X, X)
-attrib_scatter_plot(decomposition, phis, X, features, figsize=(16, 4))
+attrib_scatter_plot(decomposition, shapley_values, X, features, figsize=(16, 4))
 plt.show()
 
 # %% [markdown]
@@ -63,7 +64,7 @@ plt.show()
 # %%
 # Global feature importance
 I_PDP, I_PFI  = get_PDP_PFI_importance(decomposition)
-I_SHAP = (phis**2).mean(axis=0)
+I_SHAP = get_SHAP_importance(shapley_values)
 bar([I_PFI, I_SHAP, I_PDP], features.names())
 plt.yticks(fontsize=35)
 plt.xlabel("Feature Importance")
@@ -115,6 +116,7 @@ plt.show()
 # method returns an interpretable representation of the regions.
 # %%
 groups = tree.predict(X)
+n_groups = tree.n_groups
 rules = tree.rules(use_latex=False)
 print(rules)
 
@@ -124,43 +126,47 @@ rules = tree.rules(use_latex=True)
 # %% [markdown]
 # Given these regions, instead of using the whole dataset
 # as background, we can iterate over all regions and
-# only study the samples that land in them.
-# Regional Feature Importance can also be computed by passing
-# `groups` to `get_PDP_PFI_importance`.
+# only study the samples that land in each region.
+# Since anchored decompositions has already been computed, we can
+# use the `get_regional_decompositions` to transform the decomposition
+# into three regional decompositions 
 # %%
-# Global Feature Importance
-I_PDP, I_PFI  = get_PDP_PFI_importance(decomposition, groups=groups)
+# %%
+
+regional_decompositions = get_regional_decompositions(decomposition, groups, groups, n_groups)
+del decomposition
 
 # %% [markdown]
-# Shapley values must be computed by calling SHAP various times.
+# We must iterate over each regions to get the regional feature importance
 # %%
-from pyfd.plots import COLORS
 
 fig, axes = plt.subplots(1, tree.n_groups, figsize=(8, 4))
 # Rerun SHAP and recompute global importance regionally
-phis_list = [0] * tree.n_groups
-for i in range(tree.n_groups):
-    idx_select = (groups == i)
-    background = X[idx_select]
+regional_shapley_values = [0] * tree.n_groups
+regional_backgrounds = [0] * tree.n_groups
+for r in range(tree.n_groups):
+    regional_backgrounds[r] = X[groups == r]
 
-    # SHAP
-    masker = Independent(background, max_samples=background.shape[0])
+    I_PDP, I_PFI = get_PDP_PFI_importance(regional_decompositions[r])
+
+    # We must rerun SHAP
+    masker = Independent(regional_backgrounds[r], max_samples=regional_backgrounds[r].shape[0])
     explainer = shap.explainers.Exact(h, masker)
-    phis_list[i] = explainer(background).values
+    regional_shapley_values[r] = explainer(regional_backgrounds[r]).values
+    I_SHAP = get_SHAP_importance(regional_shapley_values[r])
 
-    I_SHAP = (phis_list[i]**2).mean(axis=0)
-    bar([I_PFI[i], I_SHAP, I_PDP[i]], features.names(), ax=axes[i], color=COLORS[i])
-    axes[i].set_xlim(0, np.max(I_PFI)+0.02)
-    axes[i].set_xlabel("Feature Importance")
-    axes[i].set_title(rules[i])
+    bar([I_PFI, I_SHAP, I_PDP], features.names(), ax=axes[r], color=COLORS[r])
+    axes[r].set_xlim(0, np.max(I_PFI)+0.02)
+    axes[r].set_xlabel("Feature Importance")
+    axes[r].set_title(rules[r])
 plt.show()
 
 # %% [markdown]
 # Finally, we recompare the local feature attributions
 # %%
 
-attrib_scatter_plot(decomposition, phis_list, X, features, 
-                    groups=groups, figsize=(16, 4))
+attrib_scatter_plot(regional_decompositions, regional_shapley_values, 
+                    regional_backgrounds, features, figsize=(16, 4))
 plot_legend(rules, ncol=2)
 plt.show()
 

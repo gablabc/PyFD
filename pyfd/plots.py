@@ -5,7 +5,7 @@ from itertools import combinations
 from graphviz import Digraph
 from math import ceil
 
-
+from .decompositions import get_interventional_from_anchored
 from .fd_trees import GADGET_PDP, PDP_PFI_Tree
 
 
@@ -393,9 +393,34 @@ def partial_dependence_plot(decomposition, foreground, background, features, idx
         iter += 1
 
 
-def attrib_scatter_plot(decomposition, phis, foreground, features, idxs=None,
-                        normalize_y=True, groups=None, figsize=None, n_cols=5):
-    
+def attrib_scatter_plot(decomposition, shapley_values, foreground, features, idxs=None,
+                        normalize_y=True, figsize=None, n_cols=5):
+    """ 
+    Plot the PDP/SHAP local feature attributions as a function of x_i.
+
+    Parameters
+    ----------
+    decomposition : dict{Tuple: np.ndarray}
+        The components of the decomposition indexed via their feature subset e.g. 
+        `decomposition[(0,)]` is an array of shape (Nf, Nb) or (Nf,). Can be a
+        List(dict) of length `n_regions`.
+    shapley_values : np.ndarray
+        The anchored (Nf, Nb, d) or interventional (Nf, d) shapley values. Can be a
+        List(np.ndarray) of length `n_regions`.
+    foreground : (Nf, d) np.ndarray
+        The foreground data. Can be a list List(np.ndarray) of length `n_regions`.
+    features : Features
+        The features object.
+    idxs : List(int), default=None
+        The index of the features to plot. When `None`, all features are plotted.
+    normalize_y : bool, default=True
+        Have the same y axis for all plots.
+    figsize : List(int), default=None
+        The size (Nx, Ny) of the figure.
+    n_cols : int, default=5
+        The number of columns in the subplot.
+    """
+
     # If no idxs is provided, we plot all features
     if idxs is None:
         idxs = range(len(features))
@@ -405,41 +430,42 @@ def attrib_scatter_plot(decomposition, phis, foreground, features, idxs=None,
     for i in range(len(idxs)):
         assert len(Imap_inv[i]) == 1, "No feature grouping in PDP plots"
         Imap_inv[i] = Imap_inv[i][0]
-    additive_keys = [(idx,) for idx in idxs]
-    d = len(additive_keys)
+    keys = [(idx,) for idx in idxs]
+    d = len(keys)
     
-    if groups is None:
-        n_groups = 1
-        groups = np.zeros(foreground.shape[0])
-        colors = ['gray']
-    elif isinstance(groups, np.ndarray):
-        n_groups = groups.max() + 1
-        colors = COLORS
-    else:
-        raise Exception("Groups must be None or a numpy array")
-    
+    # Lists are passed for regional plots
     if type(decomposition) == list:
-        assert len(decomposition) == n_groups
-        is_decomp_list = True
-        is_anchored_decomp = decomposition[0][()].shape == (foreground.shape[0],)
+        assert type(shapley_values) == list and type(foreground) == list, "Provide lists of shap values and foregrounds"
+        assert len(shapley_values) == len(decomposition), "Must have a consistent number of regions"
+        assert len(foreground) == len(decomposition), "Must have a consistent number of regions"
+        colors = COLORS
+    # Otherwise non-regional explanations are shown
     else:
-        is_decomp_list = False
-        is_anchored_decomp = decomposition[()].shape == (foreground.shape[0],)
+        assert type(decomposition) == dict
+        assert type(shapley_values) == np.ndarray
+        assert type(foreground) == np.ndarray
+        decomposition = [decomposition]
+        shapley_values = [shapley_values]
+        foreground = [foreground]
+        colors = ["grey"]
+    n_regions = len(decomposition)
 
-    if type(phis) == list:
-        assert len(phis) == n_groups
-        is_shap_list = True
-        is_anchored_shap = phis[0].ndim == 3
-        y_min = min([p[..., idxs].min() for p in phis])
-        y_max = max([p[..., idxs].max() for p in phis])
-        importance = np.max(np.stack([np.mean(p[..., idxs]**2, axis=0) for p in phis]), axis=0)
-    else:
-        is_shap_list = False
-        is_anchored_shap = phis.ndim == 3
-        y_min = phis[..., idxs].min()
-        y_max = phis[..., idxs].max()
-        importance = np.mean(phis[..., idxs]**2, axis=0)
-
+    # We need Interventional Decompositions and Shapley values
+    if shapley_values[0].ndim == 3:
+        shapley_values_copy = [0] * n_regions
+        for r in range(n_regions):
+            shapley_values_copy[r] = shapley_values[r].mean(1)
+        shapley_values = shapley_values_copy
+    if decomposition[0][(0,)].ndim == 2:
+        decomposition_copy = [0] * n_regions
+        for r in range(n_regions):
+            decomposition_copy[r] = get_interventional_from_anchored(decomposition[r])
+        decomposition = decomposition_copy
+    
+    # Min/max and feature importance
+    y_min = min([phi[..., idxs].min() for phi in shapley_values])
+    y_max = max([phi[..., idxs].max() for phi in shapley_values])
+    importance = np.max(np.stack([np.mean(phi[..., idxs]**2, axis=0) for phi in shapley_values]), axis=0)
     delta_y = (y_max-y_min)
     y_min = y_min - delta_y*0.01
     y_max = y_max + delta_y*0.01
@@ -455,61 +481,39 @@ def attrib_scatter_plot(decomposition, phis, foreground, features, idxs=None,
         # Get axis to plot
         curr_ax = get_curr_axis(n_rows, n_cols, ax, iter)
 
-        # Key represents the name of the component
-        key = additive_keys[i]
         # To which column of X it corresponds
         column = Imap_inv[i]
-        x_min = foreground[:, column].min()
-        x_max = foreground[:, column].max()
+        x_min = min(f[:, column].min() for f in foreground)
+        x_max = max(f[:, column].max() for f in foreground)
         feature = features.feature_objs[idxs[i]]
 
         # For each group plot the anchored components in color
-        for group_id in range(n_groups):
-            group_idxs = np.where(groups==group_id)[0]
-            group_foreground = foreground[group_idxs, column]
-            sorted_idx = np.argsort(group_foreground)
-            group_foreground = group_foreground[sorted_idx]
-            select = group_idxs[sorted_idx].reshape((-1, 1))
-            # Obtain the regional interventional decomposition H
-            if is_decomp_list:
-                H = decomposition[group_id]
-                if is_anchored_decomp:
-                    H = H.mean(-1)
-            else:
-                if is_anchored_decomp:
-                    H = decomposition[key][select, select.T].mean(-1)
-                else:
-                    H = decomposition[key][select.ravel()]
-            # Obtain the regional shap values Phis
-            if is_shap_list:
-                Phis = phis[group_id][sorted_idx, column]
-                if is_anchored_shap:
-                    Phis = Phis.mean(-1)
-            else:
-                if is_anchored_shap:
-                    Phis = phis[select, select.T, column].mean(-1)
-                else:
-                    Phis = phis[select.ravel(), column]
-
+        for r in range(n_regions):
+            regional_foreground = foreground[r][:, column]
+            sorted_idx = np.argsort(regional_foreground)
+            regional_foreground = regional_foreground[sorted_idx]
+            # Fetch regional interventional decomposition H and Shap values
+            H = decomposition[r][keys[i]][sorted_idx]
+            Phis = shapley_values[r][sorted_idx, column]
 
             # For ordinal features, we add a jitter to better see the points
             # and we spread the different background via the variable step
             if feature.type in ["bool", "nominal"]:
-                jitter = np.random.uniform(-0.05, 0.05, size=len(group_idxs))
-                step = 0.1 * (group_id - (n_groups-1) / 2)
-                curr_ax.scatter(group_foreground+jitter+step, Phis, alpha=0.25, c=colors[group_id])
+                jitter = np.random.uniform(-0.05, 0.05, size=len(H))
+                step = 0.1 * (r - (n_regions-1) / 2)
+                curr_ax.scatter(regional_foreground+jitter+step, Phis, alpha=0.25, c=colors[r])
                 # Enlarge the x-range to acount for jitter
-                if group_id == 0:
-                    x_min -= 0.05 + 0.1 * (n_groups-1)/2
-                    x_max += 0.05 + 0.1 * (n_groups-1)/2
+                if r == 0:
+                    x_min -= 0.05 + 0.1 * (n_regions-1)/2
+                    x_max += 0.05 + 0.1 * (n_regions-1)/2
             else:
                 step = 0
-                curr_ax.scatter(group_foreground, Phis, alpha=0.25, c=colors[group_id])
+                curr_ax.scatter(regional_foreground, Phis, alpha=0.25, c=colors[r])
             
             # Plot the PDP as a line
-            curr_ax.plot(group_foreground+step, H, 'k-', linewidth=3)
-            if n_groups > 1:
-                curr_ax.plot(group_foreground+step, H, colors[group_id], linewidth=2)
+            curr_ax.plot(regional_foreground+step, H, 'k-', linewidth=3)
+            if n_regions > 1:
+                curr_ax.plot(regional_foreground+step, H, colors[r], linewidth=2)
     
         # xticks labels for categorical data
         if feature.type in ["bool", "ordinal", "nominal"]:

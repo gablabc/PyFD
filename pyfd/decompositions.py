@@ -801,6 +801,7 @@ def get_CoE(decomposition, anchored=True, foreground_preds=None):
         return factor * np.mean( (foreground_preds - h_add)**2 )
 
 
+
 def get_interventional_from_anchored(decomposition):
     """
     Transform an anchored decomposition into an interventional one to
@@ -824,3 +825,19 @@ def get_interventional_from_anchored(decomposition):
             assert decomposition[key].ndim == 2, "The decomposition must be anchored"
             decomposition_[key] = decomposition[key].mean(1)
     return decomposition_
+
+
+
+def get_regional_decompositions(decomposition, foreground_region_idx, background_region_idx, n_regions):
+    assert len(decomposition[(0,)].shape) == 2, "The decomposition must be anchored" 
+    regional_decompositions = []
+    for region in range(n_regions):
+        regional_decompositions.append({})
+        for key in decomposition.keys():
+            if len(key) == 0:
+                regional_decompositions[-1][()] = decomposition[key][np.where(background_region_idx==region)[0]]
+            else:
+                foreground_select = np.where(foreground_region_idx==region)[0].reshape((-1, 1))
+                background_select = np.where(background_region_idx==region)[0].reshape((1, -1))
+                regional_decompositions[-1][key] = decomposition[key][foreground_select, background_select]
+    return regional_decompositions
