@@ -159,8 +159,48 @@ def test_toy_ebm_grouping(d_num, d_cat, task, num_encoding, interactions, anchor
     assert np.isclose(components[(0,)], components_2[(0,)]).all(), "Components are not the same"
 
 
+@pytest.mark.parametrize("anchored", [False, True])
+def test_ebm_marketing(anchored):
+    from interpret.glassbox import ExplainableBoostingClassifier
+    from sklearn.model_selection import train_test_split
+    from pyfd.data import get_data_marketing
+
+    X, y, features = get_data_marketing(use_target_encoder=True)
+    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.3, 
+                                                stratify=y, random_state=42)
+    model = ExplainableBoostingClassifier(random_state=0, interactions=5, max_bins=256)
+    model.fit(X_train, y_train)
+
+    # Reference data
+    background = X_train[:200]
+    # Compute the functional decomposition
+    components = get_components_ebm(model, background, background, anchored=anchored)
+    # Compute the functional decomposition
+    U = list(components.keys())[1:]
+    components_2 = get_components_brute_force(model.decision_function, background, background, 
+                                              interactions=U, anchored=anchored)
+    assert np.isclose(components[()], components_2[()]).all(), "Intercepts are not the same"
+    for u in U:
+        assert np.isclose(components[u], components_2[u]).all(), "Components are not the same"
+
+    # Grouping day:month
+    grouped_features = features.group([[5, 6]])
+    # Compute the functional decomposition
+    components = get_components_ebm(model, background, background, 
+                                    Imap_inv=grouped_features.Imap_inv, 
+                                    anchored=anchored)
+    U = list(components.keys())[1:]
+    # Compute the functional decomposition
+    components_2 = get_components_brute_force(model.decision_function, background, background, 
+                                              interactions=U, Imap_inv=grouped_features.Imap_inv, 
+                                              anchored=anchored)
+    assert np.isclose(components[()], components_2[()]).all(), "Intercepts are not the same"
+    for u in U:
+        assert np.isclose(components[u], components_2[u]).all(), "Components are not the same"
+
+
 
 if __name__ == "__main__":
-    test_toy_ebm_grouping(3, 2, "regression", "identity", True, False)
-    
+    # test_toy_ebm_grouping(3, 2, "regression", "identity", True, False)
+    test_ebm_marketing()
 

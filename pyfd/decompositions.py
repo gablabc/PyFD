@@ -169,18 +169,20 @@ def get_components_ebm(h, foreground, background, Imap_inv=None, anchored=True):
                 else:
                     decomposition[key] += hzixj - hz
             else:
-                # -h(zi, xj) ___ h(xi, xj)
+                #  h(xi, zj) ___ h(xi, xj)
                 #      |             |
-                #  h(zi, zj) ___ h(xi, zj)
+                #  h(zi, zj) ___ h(zi, xj)
                 #
                 # (i, j) term h(x) - h(xi, zj) - h(zi, xj) + h(z)
                 decomposition[key] += hx - hxizj - hzixj + hz
                 # (i,) term  h(xi, zj) - h(z)
-                decomposition[key[:1]] -= hz
-                decomposition[key[:1]] += hxizj
+                i_key = (key[0],) if term[0] in Imap_inv[key[0]] else (key[1],)
+                decomposition[i_key] -= hz
+                decomposition[i_key] += hxizj
                 # (j,) term  h(zi, xj) - h(z)
-                decomposition[key[1:]] -= hz
-                decomposition[key[1:]] += hzixj
+                j_key = (key[0],) if term[1] in Imap_inv[key[0]] else (key[1],)
+                decomposition[j_key] -= hz
+                decomposition[j_key] += hzixj
     
     return decomposition
 
