@@ -205,7 +205,7 @@ def setup_linear(h, foreground, background, Imap_inv, acceptable_types):
         # If a line is provided we can compute the PDP
         if foreground.ndim == 1:
             foreground = foreground.reshape((-1, 1))
-
+    
     # Check model type, identify the ML task, and get average prediction
     is_pipeline = False
     if safe_isinstance(h, ["sklearn.pipeline.Pipeline", "imblearn.pipeline.Pipeline"]):
@@ -215,6 +215,13 @@ def setup_linear(h, foreground, background, Imap_inv, acceptable_types):
         model_type = type(h)
     assert model_type in acceptable_types, "The predictor is not of the right class for this function"
 
+    # If a PDP is computed, we must pad the foreground so
+    # that it can be fed to the pipeline
+    if not foreground.shape[1] == h.n_features_in_:
+        foreground_pad = np.tile(background[0], (foreground.shape[0], 1))
+        foreground_pad[:, Imap_inv[0]] = foreground
+        foreground = foreground_pad
+    
     # If h is a Pipeline whose last layer is a Linear/EBM layer, we propagate the foreground and background
     # up to that point and we compute the Imap_inv up to the Linear/EBM layer
     if is_pipeline:
@@ -224,13 +231,6 @@ def setup_linear(h, foreground, background, Imap_inv, acceptable_types):
         if safe_isinstance(h, "imblearn.pipeline.Pipeline"):
             preprocessing.steps.append(['predictor', None])
         predictor = h[-1]
-
-        # If a PDP is computed, we must pad the foreground so
-        # that it can be fed to the pipeline
-        if not foreground.shape[1] == preprocessing.n_features_in_:
-            foreground_pad = np.tile(background[0], (foreground.shape[0], 1))
-            foreground_pad[:, Imap_inv[0]] = foreground
-            foreground = foreground_pad
 
         # Pass the foreground and background through the pipeline
         background = preprocessing.transform(background)

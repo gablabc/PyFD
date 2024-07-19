@@ -38,21 +38,25 @@ def setup_toy_task(d_num, d_cat=0, n_samples=1000, task="regression",
             threshold = np.sqrt(chi2(df=d).ppf(0.5))
             y = (np.linalg.norm(X_num, axis=1) > threshold).astype(int)
     
-    numerical_encoders = {"identity": FunctionTransformer(),
-                          "standard": StandardScaler(),
-                          "min-max":  MinMaxScaler()}
+    # EBM
     if task == "regression":
         model = ExplainableBoostingRegressor(interactions=0.95*int(interactions), outer_bags=2)
     else:
         model = ExplainableBoostingClassifier(interactions=0.95*int(interactions), outer_bags=2)
-    if d_cat > 0:
-        encoder = ColumnTransformer([
-                    ('num', numerical_encoders[num_encoding], list(range(d_num))),
-                    ('cat', "passthrough", list(range(d_num, d)))
-                    ])
-    else:
-        encoder = numerical_encoders[num_encoding]
-    model = Pipeline([('encoder', encoder), ('predictor', model)])
+
+    # Feature Embeddings
+    numerical_encoders = {"standard": StandardScaler(), "min-max":  MinMaxScaler()}
+    if not num_encoding == "identity":
+        if d_cat > 0:
+            encoder = ColumnTransformer([
+                        ('num', numerical_encoders[num_encoding], list(range(d_num))),
+                        ('cat', "passthrough", list(range(d_num, d)))
+                        ])
+        else:
+            encoder = numerical_encoders[num_encoding]
+        model = Pipeline([('encoder', encoder), ('predictor', model)])
+    
+    # Train the model
     model.fit(X, y.ravel())
     # Sanity check
     if task == "regression":
@@ -77,7 +81,10 @@ def test_toy_ebm_full(d_num, d_cat, task, num_encoding, interactions, anchored):
     X, model, h = setup_toy_task(d_num, d_cat, 1000, task, num_encoding, interactions)
 
     # Fully explain the model
-    U = list(model[-1].term_features_)
+    if type(model) == Pipeline:
+        U = list(model[-1].term_features_)
+    else:
+        U = list(model.term_features_)
     foreground = X
     background = X[:500]
     components = get_components_ebm(model, foreground, background, anchored=anchored)
@@ -154,6 +161,6 @@ def test_toy_ebm_grouping(d_num, d_cat, task, num_encoding, interactions, anchor
 
 
 if __name__ == "__main__":
-    test_toy_ebm_full(3, 2, "regression", "identity", True, False)
+    test_toy_ebm_grouping(3, 2, "regression", "identity", True, False)
     
 
