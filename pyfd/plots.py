@@ -4,6 +4,7 @@ from copy import deepcopy
 from itertools import combinations
 from graphviz import Digraph
 from math import ceil
+from warnings import warn
 
 from .decompositions import get_interventional_from_anchored
 from .fd_trees import GADGET_PDP, PDP_PFI_Tree
@@ -411,8 +412,12 @@ def attrib_scatter_plot(decomposition, shapley_values, foreground, features, idx
         The foreground data. Can be a list List(np.ndarray) of length `n_regions`.
     features : Features
         The features object.
-    idxs : List(int), default=None
-        The index of the features to plot. When `None`, all features are plotted.
+    idxs : List(int) or int, default=None
+        The index of the features to plot. When 
+        - `None`, all non-group features are plotted.
+        - `List(int)`, the non-group features with indices in List are plotted.
+        - `int`, the top-idxs non-group features are plotted.
+    
     normalize_y : bool, default=True
         Have the same y axis for all plots.
     figsize : List(int), default=None
@@ -420,18 +425,21 @@ def attrib_scatter_plot(decomposition, shapley_values, foreground, features, idx
     n_cols : int, default=5
         The number of columns in the subplot.
     """
-
-    # If no idxs is provided, we plot all features
-    if idxs is None:
-        idxs = range(len(features))
+    if idxs is None or type(idxs) == int:
+        top_k = idxs if type(idxs) == int else len(features)
+        idxs = list(range(len(features)))
         Imap_inv = deepcopy(features.Imap_inv)
     else:
+        top_k = len(idxs)
         Imap_inv = deepcopy([features.Imap_inv[i] for i in idxs])
-    for i in range(len(idxs)):
-        assert len(Imap_inv[i]) == 1, "No feature grouping in PDP plots"
-        Imap_inv[i] = Imap_inv[i][0]
-    keys = [(idx,) for idx in idxs]
-    d = len(keys)
+    # Remove grouped features
+    for i in range(len(idxs)-1, -1, -1):
+        if len(Imap_inv[i]) > 1:
+            warn("Grouped Features Ignored")
+            del idxs[i]
+            del Imap_inv[i]
+        else:
+            Imap_inv[i] = Imap_inv[i][0]
     
     # Lists are passed for regional plots
     if type(decomposition) == list:
@@ -469,13 +477,13 @@ def attrib_scatter_plot(decomposition, shapley_values, foreground, features, idx
     delta_y = (y_max-y_min)
     y_min = y_min - delta_y*0.01
     y_max = y_max + delta_y*0.01
-    order = np.argsort(-importance)
+    order = np.argsort(-importance)[:top_k]
 
     if len(order) < n_cols:
         n_cols = len(order)
         n_rows = 1
     else:
-        n_rows = ceil(d / n_cols)
+        n_rows = ceil(len(order) / n_cols)
     _, ax = plt.subplots(n_rows, n_cols, figsize=figsize)
     for iter, i in enumerate(order):
         # Get axis to plot
@@ -493,8 +501,8 @@ def attrib_scatter_plot(decomposition, shapley_values, foreground, features, idx
             sorted_idx = np.argsort(regional_foreground)
             regional_foreground = regional_foreground[sorted_idx]
             # Fetch regional interventional decomposition H and Shap values
-            H = decomposition[r][keys[i]][sorted_idx]
-            Phis = shapley_values[r][sorted_idx, column]
+            H = decomposition[r][(idxs[i],)][sorted_idx]
+            Phis = shapley_values[r][sorted_idx, idxs[i]]
 
             # For ordinal features, we add a jitter to better see the points
             # and we spread the different background via the variable step
