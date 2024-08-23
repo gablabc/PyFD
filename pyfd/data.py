@@ -346,9 +346,13 @@ def get_data_marketing(use_target_encoder=False):
         df[binary_column] = (df[binary_column] == "yes").astype(int)
 
     # Months should be number jan=0 feb=1 etc
-    df = df.replace(["jan", "feb", "mar", "apr", "may", "jun", "jul", 
-                     "aug", "sep", "oct", "nov", "dec"], range(12))
+    months =["jan", "feb", "mar", "apr", "may", "jun", "jul", 
+                     "aug", "sep", "oct", "nov", "dec"]
+    df = df.replace(months, range(12))
     
+    # Unknown -> ?
+    df = df.replace("unknown", "?")
+
     # Categorical and numerical features
     cat_cols = [1, 2, 3, 8, 15, 16]
     num_cols = [0, 4, 5 ,6 ,7, 9, 10, 11, 12, 13, 14]
@@ -371,7 +375,8 @@ def get_data_marketing(use_target_encoder=False):
     y = df[outcome].to_numpy()
     
     # Generate Features object
-    feature_types = ["num", "bool", "num", "bool", "bool"] + ["num"]*6 +\
+    feature_types = ["num_int", "bool", "num", "bool", "bool", "num_int"] + \
+        [["ordinal"]+ months] + ["num"]*4 + \
         [(["ordinal"] + list(l)) for l in encoder.transformers_[1][1].categories_]
     features = Features(X, feature_names, feature_types)
     
