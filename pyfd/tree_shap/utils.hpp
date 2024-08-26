@@ -26,6 +26,68 @@ T return_max(T* list, int length){
     return max_element;
 }
 
+// A struct to represent the tree ensemble
+// Each array has shape (N_tree, depth) and so by incrementing the
+// pointers by `depth` we can iterate over all trees
+struct TreeEnsemble {
+    int depth;
+    double* threshold;
+    double* value; 
+    int* feature;
+    int* left_child;
+    int* right_child;
+};
+
+// Function to initialize the tree ensemble
+void init_tree(struct TreeEnsemble* tree, int depth, double* threshold, double* value, int* feature, int* left_child, int* right_child){
+    tree->depth = depth;
+    tree->threshold = threshold;
+    tree->value = value;
+    tree->feature = feature;
+    tree->left_child = left_child;
+    tree->right_child = right_child;
+}
+
+// Function to increment the tree ensemble
+void next_tree(struct TreeEnsemble* tree){
+    tree->threshold += tree->depth;
+    tree->value += tree->depth;
+    tree->feature += tree->depth;
+    tree->left_child += tree->depth;
+    tree->right_child += tree->depth;
+}
+
+// // A struct to represent the upward flow of attributions in
+// // recurse treeshap and tree_decomp
+// struct UpwardFlow {
+//     double* pos;
+//     double* neg;
+// };
+
+// // Function to initialize the flow
+// void init_flow(struct UpwardFlow* flow, int depth){
+//     flow->pos = (double*) malloc(depth*sizeof(double));
+//     flow->neg = (double*) malloc(depth*sizeof(double));
+// }
+// // Function to initialize the flow
+// void print_flow(struct UpwardFlow* flow, int depth){
+//     for (int i = 0; i < depth; i++){
+//         cout << flow->pos[i] << " ";
+//     }
+//     cout << endl;
+//     for (int i = 0; i < depth; i++){
+//         cout << flow->neg[i] << " ";
+//     }
+//     cout << endl;
+// }
+// // Function to free the flow
+// void free_flow(struct UpwardFlow* flow){
+//     free(flow->pos);
+//     flow->pos = NULL;
+//     free(flow->neg);
+//     flow->neg = NULL;
+// }
+
 
 template<typename T>
 Matrix<T> createMatrix(int n, int m, T* data){
@@ -81,8 +143,6 @@ void printTensor(Tensor<T> mat){
         cout << "\n\n";
     }
 }
-
-
 
 void compute_W(Matrix<double> &W)
 {

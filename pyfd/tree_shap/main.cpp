@@ -1,3 +1,4 @@
+#include <string.h>
 #include <stdexcept>
 #include "recursive_treeshap.hpp"
 // #include "stack_treeshap.hpp"
@@ -15,7 +16,7 @@
 //     int Nx : number of foreground instances
 //     int Nz : number of background instances
 //     int Nt : number of trees
-//     int d  : number of input features
+//     int d  : number of input columns
 //     int depth : max depth of the tree ensemble
 //     double* foreground : row major (Nx, d) array of foreground data
 //     double* background : row major (Nz, d) array of background data
@@ -31,37 +32,40 @@
 // ********************************************************************************
 extern "C"
 int main_recurse_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* foreground, double* background,
-                      int* I_map, double* threshold, double* value, int* feature, 
-                      int* left_child, int* right_child, int anchored, int sym, double* result) {
-    // Cast to a boolean
-    int f_index, b_index, t_index;
+                            int* I_map, double* threshold, double* value, int* feature, 
+                            int* left_child, int* right_child, int anchored, int sym, double* result) {
+    int f_index, b_index;
     // The number of high-level features
     int n_features = return_max(I_map, d) + 1;
     // Precompute the SHAP weights
     Matrix<double> W(n_features, vector<double> (n_features));
     compute_W(W);
-
+    // Structure to store tree data
+    struct TreeEnsemble tree;
+    // Whether a feature is in the sets I(S_X) or I(S_Z)
+    int* in_ISX = (int*) calloc(n_features + 1, sizeof(int));
+    int* in_ISZ = (int*) calloc(n_features + 1, sizeof(int));
+    // The current shapley values
+    double* phi = (double*) calloc(n_features, sizeof(double));
+    
     // Main loop
     progressbar bar(Nx);
     // Iterate over all foreground instances
     for (int i(0); i < Nx; i++){
         f_index = i * d;
+        init_tree(&tree, depth, threshold, value, feature, left_child, right_child);
         // Iterate over all trees
         for (int t(0); t < Nt; t++){
-            t_index = t * depth;
             // Iterate over all background instances
             for (int j = sym ? i+1 : 0; j < Nz; j++){
                 b_index = j * d;
-                // Last index is the size of the set
-                vector<int> in_ISX(n_features+1, 0);
-                vector<int> in_ISZ(n_features+1, 0);
-                vector<double> phi(n_features, 0);
-
+                // Initialize shapley values at zero
+                memset(phi, 0, n_features * sizeof(double));
+                
                 // Start the recursion
-                recurse_treeshap(0, &foreground[f_index], &background[b_index], I_map, &feature[t_index], 
-                                &left_child[t_index], &right_child[t_index], &threshold[t_index], &value[t_index], 
-                                W, n_features, phi, in_ISX, in_ISZ);
-
+                recurse_treeshap(0, &foreground[f_index], &background[b_index], &tree, 
+                                        I_map, n_features, in_ISX, in_ISZ, W, phi);
+                
                 // Store the results
                 if (anchored){
                     for (int f(0); f < n_features; f++){
@@ -80,6 +84,7 @@ int main_recurse_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* fore
                     }
                 }
             }
+            next_tree(&tree);
         }
         bar.update();
     }
@@ -90,8 +95,9 @@ int main_recurse_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* fore
         }
     }
     std::cout << std::endl;
-    
-    return 0;
+    free(in_ISX);
+    free(in_ISZ);
+    free(phi);
 }
 
 
@@ -125,43 +131,46 @@ int main_recurse_additive(int Nx, int Nz, int Nt, int d, int depth, double* fore
     int f_index, b_index, t_index, result_index_1, result_index_2;
     // The number of high-level features
     int n_features = return_max(I_map, d) + 1;
-
+    // Structure to store tree data
+    struct TreeEnsemble tree;
+    // Whether a feature is in the sets I(S_X) or I(S_Z)
+    int* in_ISX = (int*) calloc(n_features + 1, sizeof(int));
+    int* in_ISZ = (int*) calloc(n_features + 1, sizeof(int));
+    
     // Main loop
     progressbar bar(Nx);
     // Iterate over all foreground instances
     for (int i(0); i < Nx; i++){
         f_index = i * d;
+        init_tree(&tree, depth, threshold, value, feature, left_child, right_child);
         // Iterate over all trees
         for (int t(0); t < Nt; t++){
-            t_index = t * depth;
             // Iterate over all background instances
             for (int j = sym ? i+1 : 0; j < Nz; j++){
                 b_index = j * d;
-                // Last index is the size of the set
-                vector<int> in_ISX(n_features+1, 0);
-                vector<int> in_ISZ(n_features+1, 0);
 
                 if (sym){
                     vector<int> ISX, ISZ;
                     result_index_1 = Nz*n_features*i + n_features*j;
                     result_index_2 = Nz*n_features*j + n_features*i;
                     // Start the recursion
-                    recurse_additive_sym(0, &foreground[f_index], &background[b_index], I_map, &feature[t_index],
-                                    &left_child[t_index], &right_child[t_index], &threshold[t_index], &value[t_index], 
-                                    n_features, in_ISX, in_ISZ, ISX, ISZ, &result[result_index_1], &result[result_index_2]);
+                    recurse_additive_sym(0, &foreground[f_index], &background[b_index], &tree, I_map, n_features, 
+                                in_ISX, in_ISZ, ISX, ISZ, &result[result_index_1], &result[result_index_2]);
                 }
                 else {
                     result_index_1 = Nz*n_features*i + n_features*j;
                     // Start the recursion
-                    recurse_additive(0, &foreground[f_index], &background[b_index], I_map, &feature[t_index], 
-                                    &left_child[t_index], &right_child[t_index], &threshold[t_index], &value[t_index], 
-                                    n_features, in_ISX, in_ISZ, &result[result_index_1]);
+                    recurse_additive(0, &foreground[f_index], &background[b_index], &tree, I_map, n_features,
+                                                                    in_ISX, in_ISZ, &result[result_index_1]);
                 }
             }
+            next_tree(&tree);
         }
         bar.update();
     }
     std::cout << std::endl;
+    free(in_ISX);
+    free(in_ISZ);
     
     return 0;
 }
@@ -197,35 +206,39 @@ int main_taylor_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* foreg
     // Precompute the SHAP weights
     Matrix<double> W(n_features, vector<double> (n_features));
     compute_W(W);
-
+    // Tree structure
+    struct TreeEnsemble tree;
+    // Whether a feature is in the sets I(S_X) or I(S_Z)
+    int* in_ISX = (int*) calloc(n_features + 1, sizeof(int));
+    int* in_ISZ = (int*) calloc(n_features + 1, sizeof(int));
+    
     // Main loop
     progressbar bar(Nx);
     // Iterate over all foreground instances
     for (int i(0); i < Nx; i++){
         f_index = i * d;
         result_index = n_features*n_features*i;
+        init_tree(&tree, depth, threshold, value, feature, left_child, right_child);
         // Iterate over all trees
         for (int t(0); t < Nt; t++){
-            t_index = t * depth;
             // Iterate over all background instances
             for (int j(0); j < Nz; j++){
                 b_index = j * d;
                 // Set I(S_X) U I(S_Z)
                 vector<int> ISX_U_ISZ;
-                // Last index is the size of the set
-                vector<int> in_ISX(n_features+1, 0);
-                vector<int> in_ISZ(n_features+1, 0);
 
                 // Start the recursion
-                recurse_taylor_treeshap(0, &foreground[f_index], &background[b_index], I_map, &feature[t_index], 
-                                &left_child[t_index], &right_child[t_index], &threshold[t_index], &value[t_index], 
-                                W, n_features, ISX_U_ISZ, in_ISX, in_ISZ, &result[result_index]);
+                recurse_taylor_treeshap(0, &foreground[f_index], &background[b_index], &tree, I_map, n_features,
+                                                ISX_U_ISZ, in_ISX, in_ISZ, W, &result[result_index]);
             }
+            next_tree(&tree);
         }
         bar.update();
     }
     std::cout << std::endl;
-    
+    free(in_ISX);
+    free(in_ISZ);
+
     return 0;
 }
 
