@@ -134,10 +134,7 @@
 // pair.second -> negative contribution going to I(S_Z)
 pair<double, double> recurse_treeshap(int n, double* x, double* z, 
                                 struct TreeEnsemble* tree,
-                                int* I_map,
-                                int n_features,
-                                int* in_ISX,
-                                int* in_ISZ,
+                                struct Image* image,
                                 Matrix<double> &W,
                                 double* phi)
 {
@@ -151,14 +148,14 @@ pair<double, double> recurse_treeshap(int n, double* x, double* z,
     if (tree->right_child[n] < 0)
     {
         double pos(0.0), neg(0.0);
-        num_players = in_ISX[n_features] + in_ISZ[n_features];
-        if (in_ISX[n_features] > 0)
+        num_players = image->card_ISX + image->card_ISZ;
+        if (image->card_ISX > 0)
         {
-            pos = W[in_ISX[n_features]-1][num_players-1] * tree->value[n];
+            pos = W[image->card_ISX-1][num_players-1] * tree->value[n];
         }
-        if (in_ISZ[n_features] > 0)
+        if (image->card_ISZ > 0)
         {
-            neg = W[in_ISX[n_features]][num_players-1] * tree->value[n];
+            neg = W[image->card_ISX][num_players-1] * tree->value[n];
         }
         return make_pair(pos, neg);
     }
@@ -169,38 +166,38 @@ pair<double, double> recurse_treeshap(int n, double* x, double* z,
 
     // Scenario 1 : x and z go the same way so we avoid the type B edge
     if (x_child == z_child){
-        return recurse_treeshap(x_child, x, z, tree, I_map, n_features, in_ISX, in_ISZ, W, phi);
+        return recurse_treeshap(x_child, x, z, tree, image, W, phi);
     }
 
     // Scenario 2: x and z go different ways and we have seen this feature I(i) in I(S_X) U I(S_Z).
     // Hence, we go down the correct edge to ensure that I(S_X) and I(S_Z) are kept disjoint
-    if (in_ISX[ I_map[current_feature] ] || in_ISZ[ I_map[current_feature] ]){
-        if (in_ISX[ I_map[current_feature] ]){
-            return recurse_treeshap(x_child, x, z, tree, I_map, n_features, in_ISX, in_ISZ, W, phi);
+    if (image->in_ISX[ image->Imap[current_feature] ] || image->in_ISZ[ image->Imap[current_feature] ]){
+        if (image->in_ISX[ image->Imap[current_feature] ]){
+            return recurse_treeshap(x_child, x, z, tree, image, W, phi);
         }
         else{
-            return recurse_treeshap(z_child, x, z, tree, I_map, n_features, in_ISX, in_ISZ, W, phi);
+            return recurse_treeshap(z_child, x, z, tree, image, W, phi);
         }
     }
 
     // Scenario 3 : x and z go different ways and we have not yet seen this feature
     else {
         // Go to x's child
-        in_ISX[ I_map[current_feature] ]++;
-        in_ISX[n_features]++;
-        pair<double, double> pairf = recurse_treeshap(x_child, x, z, tree, I_map, n_features, in_ISX, in_ISZ, W, phi);
-        in_ISX[ I_map[current_feature] ]--;
-        in_ISX[n_features]--;
+        image->in_ISX[ image->Imap[current_feature] ]++;
+        image->card_ISX++;
+        pair<double, double> pairf = recurse_treeshap(x_child, x, z, tree, image, W, phi);
+        image->in_ISX[ image->Imap[current_feature] ]--;
+        image->card_ISX--;
 
         // Go to z's child
-        in_ISZ[ I_map[current_feature] ]++;
-        in_ISZ[n_features]++;
-        pair<double, double> pairb = recurse_treeshap(z_child, x, z, tree, I_map, n_features, in_ISX, in_ISZ, W, phi);
-        in_ISZ[ I_map[current_feature] ]--;
-        in_ISZ[n_features]--;
+        image->in_ISZ[ image->Imap[current_feature] ]++;
+        image->card_ISZ++;
+        pair<double, double> pairb = recurse_treeshap(z_child, x, z, tree, image, W, phi);
+        image->in_ISZ[ image->Imap[current_feature] ]--;
+        image->card_ISZ--;
 
         // Add contribution to the feature
-        phi[ I_map[current_feature] ] += pairf.first - pairb.second;
+        phi[ image->Imap[current_feature] ] += pairf.first - pairb.second;
 
         return make_pair(pairf.first + pairb.first, pairf.second + pairb.second);
     }
@@ -214,10 +211,7 @@ pair<double, double> recurse_treeshap(int n, double* x, double* z,
 // pair.second -> negative contribution going to I(S_Z) when |I(S_X)|=0
 pair<double, double> recurse_additive(int n, double* x, double* z, 
                                     struct TreeEnsemble* tree,
-                                    int* I_map,
-                                    int n_features,
-                                    int* in_ISX,
-                                    int* in_ISZ,
+                                    struct Image* image,
                                     double* result){
     
     int current_feature = tree->feature[n];
@@ -228,11 +222,11 @@ pair<double, double> recurse_additive(int n, double* x, double* z,
     {   
         double pos(0.0), neg(0.0);
         // |I(S_X)| = 0 so EACH element of I(S_Z) gets a contribution
-        if (in_ISX[n_features]==0){
+        if (image->card_ISX==0){
             neg = tree->value[n];
         }
         // |I(S_X)| = 1 so the SINGLE element of I(S_X) gets a contribution
-        else if (in_ISX[n_features]==1){
+        else if (image->card_ISX==1){
             pos = tree->value[n];
         }
 
@@ -245,17 +239,17 @@ pair<double, double> recurse_additive(int n, double* x, double* z,
 
     // Scenario 1 : x and z go the same way so we avoid the type B edge
     if (x_child == z_child){
-        return recurse_additive(x_child, x, z, tree, I_map, n_features, in_ISX, in_ISZ, result);
+        return recurse_additive(x_child, x, z, tree, image, result);
     }
 
     // Scenario 2: x and z go different ways and we have seen this feature I(i) in I(S_X) U I(S_Z).
     // Hence, we go down the correct edge to ensure that I(S_X) and I(S_Z) are kept disjoint
-    if (in_ISX[ I_map[current_feature] ] || in_ISZ[ I_map[current_feature] ]){
-        if (in_ISX[ I_map[current_feature] ]){
-            return recurse_additive(x_child, x, z, tree, I_map, n_features, in_ISX, in_ISZ, result);
+    if (image->in_ISX[ image->Imap[current_feature] ] || image->in_ISZ[ image->Imap[current_feature] ]){
+        if (image->in_ISX[ image->Imap[current_feature] ]){
+            return recurse_additive(x_child, x, z, tree, image, result);
         }
         else{
-            return recurse_additive(z_child, x, z, tree, I_map, n_features, in_ISX, in_ISZ, result);
+            return recurse_additive(z_child, x, z, tree, image, result);
         }
     }
 
@@ -263,23 +257,27 @@ pair<double, double> recurse_additive(int n, double* x, double* z,
     else {
         pair<double, double> pairf, pairb;
         // Go to x's child if it ensures that |I(S_X)|<=1
-        if (in_ISX[n_features] == 0){
-            in_ISX[ I_map[current_feature] ]++; in_ISX[n_features]++;
-            pairf = recurse_additive(x_child, x, z, tree, I_map, n_features, in_ISX, in_ISZ, result);
-            in_ISX[ I_map[current_feature] ]--; in_ISX[n_features]--;
+        if (image->card_ISX == 0){
+            image->in_ISX[ image->Imap[current_feature] ]++;
+            image->card_ISX++;
+            pairf = recurse_additive(x_child, x, z, tree, image, result);
+            image->in_ISX[ image->Imap[current_feature] ]--; 
+            image->card_ISX--;
         }
         else {
             pairf = make_pair(0.0, 0.0);
         }
 
         // Go to z's child
-        in_ISZ[ I_map[current_feature] ]++; in_ISZ[n_features]++;
-        pairb = recurse_additive(z_child, x, z, tree, I_map, n_features, in_ISX, in_ISZ, result);
-        in_ISZ[ I_map[current_feature] ]--; in_ISZ[n_features]--;
+        image->in_ISZ[ image->Imap[current_feature] ]++;
+        image->card_ISZ++;
+        pairb = recurse_additive(z_child, x, z, tree, image, result);
+        image->in_ISZ[ image->Imap[current_feature] ]--; 
+        image->card_ISZ--;
         
 
         // Add contribution to the feature
-        result[ I_map[current_feature] ] += pairf.first - pairb.second;
+        result[ image->Imap[current_feature] ] += pairf.first - pairb.second;
 
         return make_pair(pairf.first + pairb.first, pairf.second + pairb.second);
     }
@@ -291,10 +289,7 @@ pair<double, double> recurse_additive(int n, double* x, double* z,
 // Recursion function additive components in symmetric case
 int recurse_additive_sym(int n, double* x, double* z, 
                         struct TreeEnsemble* tree,
-                        int* I_map,
-                        int n_features,
-                        int* in_ISX,
-                        int* in_ISZ,
+                        struct Image* image,
                         vector<int> &ISX,
                         vector<int> &ISZ,
                         double* result_1,
@@ -308,25 +303,25 @@ int recurse_additive_sym(int n, double* x, double* z,
     if (tree->left_child[n] < 0)
     {   
 
-        // |S_X| = 0 so EACH element of S_Z gets a contribution
-        if (in_ISX[n_features]==0){
+        // |I(S_X)| = 0 so EACH element of I(S_Z) gets a contribution
+        if (image->card_ISX==0){
             for (auto & i : ISZ){
                 result_1[i] -= tree->value[n];
             }
         }
         // |S_X| = 1 so the SINGLE element of S_X gets a contribution
-        else if (in_ISX[n_features]==1){
+        else if (image->card_ISX==1){
             result_1[ISX[0]] += tree->value[n];
         }
 
         // |S_Z| = 0 so EACH element of S_X gets a contribution
-        if (in_ISZ[n_features]==0){
+        if (image->card_ISZ==0){
             for (auto & i : ISX){
                 result_2[i] -= tree->value[n];
             }
         }
         // |S_Z| = 1 so the SINGLE element of S_Z gets a contribution
-        else if (in_ISZ[n_features]==1){
+        else if (image->card_ISZ==1){
             result_2[ISZ[0]] += tree->value[n];
         }
         return 0;
@@ -338,17 +333,17 @@ int recurse_additive_sym(int n, double* x, double* z,
 
     // Scenario 1 : x and z go the same way so we avoid the type B edge
     if (x_child == z_child){
-        return recurse_additive_sym(x_child, x, z, tree, I_map, n_features, in_ISX, in_ISZ, ISX, ISZ, result_1, result_2);
+        return recurse_additive_sym(x_child, x, z, tree, image, ISX, ISZ, result_1, result_2);
     }
 
     // Scenario 2: x and z go different ways and we have seen this feature I(i) in I(S_X) U I(S_Z).
     // Hence, we go down the correct edge to ensure that I(S_X) and I(S_Z) are kept disjoint
-    if (in_ISX[ I_map[current_feature] ] || in_ISZ[ I_map[current_feature] ]){
-        if (in_ISX[ I_map[current_feature] ]){
-            return recurse_additive_sym(x_child, x, z, tree, I_map, n_features, in_ISX, in_ISZ, ISX, ISZ, result_1, result_2);
+    if (image->in_ISX[ image->Imap[current_feature] ] || image->in_ISZ[ image->Imap[current_feature] ]){
+        if (image->in_ISX[ image->Imap[current_feature] ]){
+            return recurse_additive_sym(x_child, x, z, tree, image, ISX, ISZ, result_1, result_2);
         }
         else{
-            return recurse_additive_sym(z_child, x, z, tree, I_map, n_features, in_ISX, in_ISZ, ISX, ISZ, result_1, result_2);
+            return recurse_additive_sym(z_child, x, z, tree, image, ISX, ISZ, result_1, result_2);
         }
     }
 
@@ -356,20 +351,24 @@ int recurse_additive_sym(int n, double* x, double* z,
     else {
 
         // Go to x's child if it ensures that |I(S_X)|<=1 or |I(S_Z)|<=1
-        if (in_ISX[n_features] == 0 || in_ISZ[n_features] <= 1){
-            in_ISX[ I_map[current_feature] ]++; in_ISX[n_features]++;
-            ISX.push_back(I_map[current_feature]);
-            recurse_additive_sym(x_child, x, z, tree, I_map, n_features, in_ISX, in_ISZ, ISX, ISZ, result_1, result_2);
-            in_ISX[ I_map[current_feature] ]--; in_ISX[n_features]--;
+        if (image->card_ISX == 0 || image->card_ISZ <= 1){
+            image->in_ISX[ image->Imap[current_feature] ]++; 
+            image->card_ISX++;
+            ISX.push_back(image->Imap[current_feature]);
+            recurse_additive_sym(x_child, x, z, tree, image, ISX, ISZ, result_1, result_2);
+            image->in_ISX[ image->Imap[current_feature] ]--;
+            image->card_ISX--;
             ISX.pop_back();
         }
 
         // Go to z's child if it ensures that |I(S_X)|<=1 or |I(S_Z)|<=1
-        if (in_ISZ[n_features] == 0 || in_ISX[n_features] <= 1){
-            in_ISZ[ I_map[current_feature] ]++; in_ISZ[n_features]++;
-            ISZ.push_back(I_map[current_feature]);
-            recurse_additive_sym(z_child, x, z, tree, I_map, n_features, in_ISX, in_ISZ, ISX, ISZ, result_1, result_2);
-            in_ISZ[ I_map[current_feature] ]--; in_ISZ[n_features]--;
+        if (image->card_ISZ == 0 || image->card_ISX <= 1){
+            image->in_ISZ[ image->Imap[current_feature] ]++;
+            image->card_ISZ++;
+            ISZ.push_back(image->Imap[current_feature]);
+            recurse_additive_sym(z_child, x, z, tree, image, ISX, ISZ, result_1, result_2);
+            image->in_ISZ[ image->Imap[current_feature] ]--;
+            image->card_ISZ--;
             ISZ.pop_back();
         }
         return 0;
@@ -618,11 +617,8 @@ int recurse_additive_sym(int n, double* x, double* z,
 int recurse_taylor_treeshap(int n,
                             double* x, double* z, 
                             struct TreeEnsemble* tree,
-                            int* I_map,
-                            int n_features,
+                            struct Image* image,
                             vector<int> ISX_U_ISZ,
-                            int* in_ISX,
-                            int* in_ISZ,
                             Matrix<double> &W,
                             double* result)
 {
@@ -643,27 +639,27 @@ int recurse_taylor_treeshap(int n,
                 // Diagonal element
                 if (i == j) {
                     // i in I(S_Z) and I(S_X) is empty
-                    if (in_ISZ[i] && (in_ISX[n_features] == 0) ){
-                        result[i * n_features + i] -= tree->value[n];
+                    if (image->in_ISZ[i] && (image->card_ISX == 0) ){
+                        result[i * image->n_features + i] -= tree->value[n];
                     }
                     // I(S_X) = {i}
-                    if (in_ISX[i] && (in_ISX[n_features] == 1) ){
-                        result[i * n_features + i] += tree->value[n];
+                    if (image->in_ISX[i] && (image->card_ISX == 1) ){
+                        result[i * image->n_features + i] += tree->value[n];
                     }
                 }
                 // Non-diagonal element
                 else {
                     // i,j in I(S_X)
-                    if (in_ISX[i] && in_ISX[j]){
-                        result[i * n_features + j] += W[in_ISX[n_features]-2][num_players-1] * tree->value[n];
+                    if (image->in_ISX[i] && image->in_ISX[j]){
+                        result[i * image->n_features + j] += W[image->card_ISX - 2][num_players-1] * tree->value[n];
                     }
                     // i,j in I(S_Z)
-                    else if (in_ISZ[i] && in_ISZ[j]){
-                        result[i * n_features + j] += W[in_ISX[n_features]][num_players-1] * tree->value[n];
+                    else if (image->in_ISZ[i] && image->in_ISZ[j]){
+                        result[i * image->n_features + j] += W[image->card_ISX][num_players-1] * tree->value[n];
                     }
                     // i in I(S_X)  and  j in I(S_Z)   OR   j in I(S_X)  and  i in I(S_Z)
-                    else if ((in_ISX[i] + in_ISZ[j] + in_ISX[j] + in_ISZ[i]) == 2){
-                        result[i * n_features + j]-= W[in_ISX[n_features]-1][num_players-1] * tree->value[n];
+                    else if ((image->in_ISX[i] + image->in_ISZ[j] + image->in_ISX[j] + image->in_ISZ[i]) == 2){
+                        result[i * image->n_features + j]-= W[image->card_ISX - 1][num_players-1] * tree->value[n];
                     }
                 }
             }
@@ -677,32 +673,36 @@ int recurse_taylor_treeshap(int n,
 
     // Scenario 1 : x and z go the same way so we avoid the type B edge
     if (x_child == z_child){
-        return recurse_taylor_treeshap(x_child, x, z, tree, I_map, n_features, ISX_U_ISZ, in_ISX, in_ISZ, W, result);
+        return recurse_taylor_treeshap(x_child, x, z, tree, image, ISX_U_ISZ, W, result);
     }
 
     // Senario 2: x and z go different ways and we have seen this feature I(i) in I(S_X) U I(S_Z).
     // Hence we go down the correct edge to ensure that I(S_X) and I(S_Z) are kept disjoint
-    if (in_ISX[ I_map[current_feature] ] || in_ISZ[ I_map[current_feature] ]){
-        if (in_ISX[ I_map[current_feature] ]){
-            return recurse_taylor_treeshap(x_child, x, z, tree, I_map, n_features, ISX_U_ISZ, in_ISX, in_ISZ, W, result);
+    if (image->in_ISX[ image->Imap[current_feature] ] || image->in_ISZ[ image->Imap[current_feature] ]){
+        if (image->in_ISX[ image->Imap[current_feature] ]){
+            return recurse_taylor_treeshap(x_child, x, z, tree, image, ISX_U_ISZ, W, result);
         }
         else{
-            return recurse_taylor_treeshap(z_child, x, z, tree, I_map, n_features, ISX_U_ISZ, in_ISX, in_ISZ, W, result);
+            return recurse_taylor_treeshap(z_child, x, z, tree, image, ISX_U_ISZ, W, result);
         }
     }
 
     // Scenario 3 : x and z go different ways and we have not yet seen this I(i)
     else {
         // Go to x's child
-        ISX_U_ISZ.push_back( I_map[current_feature] );
-        in_ISX[ I_map[current_feature] ]++; in_ISX[ n_features ]++;
-        recurse_taylor_treeshap(x_child, x, z, tree, I_map, n_features, ISX_U_ISZ, in_ISX, in_ISZ, W, result);
-        in_ISX[ I_map[current_feature] ]--; in_ISX[ n_features ]--;
+        ISX_U_ISZ.push_back( image->Imap[current_feature] );
+        image->in_ISX[ image->Imap[current_feature] ]++; 
+        image->card_ISX++;
+        recurse_taylor_treeshap(x_child, x, z, tree, image, ISX_U_ISZ, W, result);
+        image->in_ISX[ image->Imap[current_feature] ]--;
+        image->card_ISX--;
 
         // Go to z's child
-        in_ISZ[ I_map[current_feature] ]++; in_ISZ[ n_features ]++;
-        recurse_taylor_treeshap(z_child, x, z, tree, I_map, n_features, ISX_U_ISZ, in_ISX, in_ISZ, W, result);
-        in_ISZ[ I_map[current_feature] ]--; in_ISZ[ n_features ]--;
+        image->in_ISZ[ image->Imap[current_feature] ]++; 
+        image->card_ISZ++;
+        recurse_taylor_treeshap(z_child, x, z, tree, image, ISX_U_ISZ, W, result);
+        image->in_ISZ[ image->Imap[current_feature] ]--;
+        image->card_ISZ--;
         ISX_U_ISZ.pop_back();
         return 0;
     }

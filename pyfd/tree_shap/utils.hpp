@@ -57,6 +57,34 @@ void next_tree(struct TreeEnsemble* tree){
     tree->right_child += tree->depth;
 }
 
+
+// Stucture to store everything related to the Image I:[d']->[d]
+// that maps input columns to features
+struct Image{
+    int n_features;
+    int* in_ISX;
+    int* in_ISZ;
+    int card_ISX;
+    int card_ISZ;
+    int* Imap;
+};
+
+void init_image(struct Image* image, int d, int* Imap){
+    image->n_features = return_max(Imap, d) + 1;
+    image->in_ISX = (int*) calloc(image->n_features + 1, sizeof(int));
+    image->in_ISZ = (int*) calloc(image->n_features + 1, sizeof(int));
+    image->card_ISX = 0;
+    image->card_ISZ = 0;
+    image->Imap = Imap;
+}
+
+void free_image(struct Image* image){
+    free(image->in_ISX);
+    free(image->in_ISZ);
+    image->in_ISX = NULL;
+    image->in_ISZ = NULL;
+}
+
 // // A struct to represent the upward flow of attributions in
 // // recurse treeshap and tree_decomp
 // struct UpwardFlow {

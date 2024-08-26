@@ -35,18 +35,16 @@ int main_recurse_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* fore
                             int* I_map, double* threshold, double* value, int* feature, 
                             int* left_child, int* right_child, int anchored, int sym, double* result) {
     int f_index, b_index;
-    // The number of high-level features
-    int n_features = return_max(I_map, d) + 1;
-    // Precompute the SHAP weights
-    Matrix<double> W(n_features, vector<double> (n_features));
-    compute_W(W);
     // Structure to store tree data
     struct TreeEnsemble tree;
-    // Whether a feature is in the sets I(S_X) or I(S_Z)
-    int* in_ISX = (int*) calloc(n_features + 1, sizeof(int));
-    int* in_ISZ = (int*) calloc(n_features + 1, sizeof(int));
+    //Structure to encode the mapping I
+    struct Image image;
+    init_image(&image, d, I_map);
     // The current shapley values
-    double* phi = (double*) calloc(n_features, sizeof(double));
+    double* phi = (double*) calloc(image.n_features, sizeof(double));
+    // Precompute the SHAP weights
+    Matrix<double> W(image.n_features, vector<double> (image.n_features));
+    compute_W(W);
     
     // Main loop
     progressbar bar(Nx);
@@ -60,26 +58,25 @@ int main_recurse_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* fore
             for (int j = sym ? i+1 : 0; j < Nz; j++){
                 b_index = j * d;
                 // Initialize shapley values at zero
-                memset(phi, 0, n_features * sizeof(double));
+                memset(phi, 0, image.n_features * sizeof(double));
                 
                 // Start the recursion
-                recurse_treeshap(0, &foreground[f_index], &background[b_index], &tree, 
-                                        I_map, n_features, in_ISX, in_ISZ, W, phi);
+                recurse_treeshap(0, &foreground[f_index], &background[b_index], &tree, &image, W, phi);
                 
                 // Store the results
                 if (anchored){
-                    for (int f(0); f < n_features; f++){
-                        result[Nz*n_features*i + n_features*j + f] += phi[f];
+                    for (int f(0); f < image.n_features; f++){
+                        result[Nz*image.n_features*i + image.n_features*j + f] += phi[f];
                         if (sym){
-                            result[Nz*n_features*j + n_features*i + f] -= phi[f];
+                            result[Nz*image.n_features*j + image.n_features*i + f] -= phi[f];
                         }
                     }
                 }
                 else {
-                    for (int f(0); f < n_features; f++){
-                        result[n_features*i + f] += phi[f];
+                    for (int f(0); f < image.n_features; f++){
+                        result[image.n_features*i + f] += phi[f];
                         if (sym){
-                            result[n_features*j + f] -= phi[f];
+                            result[image.n_features*j + f] -= phi[f];
                         }
                     }
                 }
@@ -90,13 +87,12 @@ int main_recurse_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* fore
     }
     if (!anchored){
         // Rescale w.r.t the number of background instances
-        for (int i(0); i < Nx*n_features; i++){
+        for (int i(0); i < Nx*image.n_features; i++){
             result[i] /= Nz;
         }
     }
     std::cout << std::endl;
-    free(in_ISX);
-    free(in_ISZ);
+    free_image(&image);
     free(phi);
 }
 
@@ -128,14 +124,12 @@ int main_recurse_additive(int Nx, int Nz, int Nt, int d, int depth, double* fore
                         int* I_map, double* threshold, double* value, int* feature, 
                         int* left_child, int* right_child, int sym, double* result) {
     // Cast to a boolean
-    int f_index, b_index, t_index, result_index_1, result_index_2;
-    // The number of high-level features
-    int n_features = return_max(I_map, d) + 1;
+    int f_index, b_index, result_index_1, result_index_2;
     // Structure to store tree data
     struct TreeEnsemble tree;
-    // Whether a feature is in the sets I(S_X) or I(S_Z)
-    int* in_ISX = (int*) calloc(n_features + 1, sizeof(int));
-    int* in_ISZ = (int*) calloc(n_features + 1, sizeof(int));
+    //Structure to encode the mapping I
+    struct Image image;
+    init_image(&image, d, I_map);
     
     // Main loop
     progressbar bar(Nx);
@@ -148,20 +142,18 @@ int main_recurse_additive(int Nx, int Nz, int Nt, int d, int depth, double* fore
             // Iterate over all background instances
             for (int j = sym ? i+1 : 0; j < Nz; j++){
                 b_index = j * d;
-
                 if (sym){
                     vector<int> ISX, ISZ;
-                    result_index_1 = Nz*n_features*i + n_features*j;
-                    result_index_2 = Nz*n_features*j + n_features*i;
+                    result_index_1 = Nz*image.n_features*i + image.n_features*j;
+                    result_index_2 = Nz*image.n_features*j + image.n_features*i;
                     // Start the recursion
-                    recurse_additive_sym(0, &foreground[f_index], &background[b_index], &tree, I_map, n_features, 
-                                in_ISX, in_ISZ, ISX, ISZ, &result[result_index_1], &result[result_index_2]);
+                    recurse_additive_sym(0, &foreground[f_index], &background[b_index], &tree, &image, 
+                                            ISX, ISZ, &result[result_index_1], &result[result_index_2]);
                 }
                 else {
-                    result_index_1 = Nz*n_features*i + n_features*j;
+                    result_index_1 = Nz*image.n_features*i + image.n_features*j;
                     // Start the recursion
-                    recurse_additive(0, &foreground[f_index], &background[b_index], &tree, I_map, n_features,
-                                                                    in_ISX, in_ISZ, &result[result_index_1]);
+                    recurse_additive(0, &foreground[f_index], &background[b_index], &tree, &image, &result[result_index_1]);
                 }
             }
             next_tree(&tree);
@@ -169,8 +161,7 @@ int main_recurse_additive(int Nx, int Nz, int Nt, int d, int depth, double* fore
         bar.update();
     }
     std::cout << std::endl;
-    free(in_ISX);
-    free(in_ISZ);
+    free_image(&image);
     
     return 0;
 }
@@ -200,24 +191,22 @@ int main_taylor_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* foreg
                             int* I_map, double* threshold, double* value, int* feature, 
                             int* left_child, int* right_child, double* result) {
     // Cast to a boolean
-    int f_index, b_index, t_index, result_index;
-    // The number of high-level features
-    int n_features = return_max(I_map, d) + 1;
-    // Precompute the SHAP weights
-    Matrix<double> W(n_features, vector<double> (n_features));
-    compute_W(W);
+    int f_index, b_index, result_index;
     // Tree structure
     struct TreeEnsemble tree;
-    // Whether a feature is in the sets I(S_X) or I(S_Z)
-    int* in_ISX = (int*) calloc(n_features + 1, sizeof(int));
-    int* in_ISZ = (int*) calloc(n_features + 1, sizeof(int));
+    //Structure to encode the mapping I
+    struct Image image;
+    init_image(&image, d, I_map);
+    // Precompute the SHAP weights
+    Matrix<double> W(image.n_features, vector<double> (image.n_features));
+    compute_W(W);
     
     // Main loop
     progressbar bar(Nx);
     // Iterate over all foreground instances
     for (int i(0); i < Nx; i++){
         f_index = i * d;
-        result_index = n_features*n_features*i;
+        result_index = image.n_features*image.n_features*i;
         init_tree(&tree, depth, threshold, value, feature, left_child, right_child);
         // Iterate over all trees
         for (int t(0); t < Nt; t++){
@@ -228,16 +217,15 @@ int main_taylor_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* foreg
                 vector<int> ISX_U_ISZ;
 
                 // Start the recursion
-                recurse_taylor_treeshap(0, &foreground[f_index], &background[b_index], &tree, I_map, n_features,
-                                                ISX_U_ISZ, in_ISX, in_ISZ, W, &result[result_index]);
+                recurse_taylor_treeshap(0, &foreground[f_index], &background[b_index], &tree, &image, 
+                                                                ISX_U_ISZ, W, &result[result_index]);
             }
             next_tree(&tree);
         }
         bar.update();
     }
     std::cout << std::endl;
-    free(in_ISX);
-    free(in_ISZ);
+    free_image(&image);
 
     return 0;
 }
