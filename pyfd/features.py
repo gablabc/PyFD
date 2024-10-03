@@ -5,6 +5,7 @@ Feature objects to represent feature of various types as well as operations on f
 import numpy as np
 from copy import deepcopy
 
+from pyfd.utils import ravel
 # A feature is an object that has a `name` attribute, a `type` attribute, and a callable
 # that takes x and return a string representation of the feature. These are a high level representation
 # e.g. numerical -> (low, medium, high), categorical 3 -> "Married" etc.
@@ -336,23 +337,30 @@ class Features(object):
         """
         assert type(feature_groups) in (tuple, list)
         assert type(feature_groups[0]) in (tuple, list)
-
-        feature_copy = deepcopy(self)
-        # Update Imap_inv
-        for feature_group in feature_groups:
-            feature_copy.Imap_inv.append(feature_group)
-            for feature in feature_group:
-                feature_copy.Imap_inv.remove([feature])
         
-        # Update feature_objs
-        feature_copy.feature_objs = []
-        for feature_group in feature_copy.Imap_inv:
-            # Update types
-            if len(feature_group) == 1:
-                feature_copy.feature_objs.append( self.feature_objs[feature_group[0]] )
-            else:
-                feature_copy.feature_objs.append( combined_feature([self.feature_objs[idx] for idx in feature_group]) )
+        # All features idxs that are involved in grouping
+        all_grouped_idxs = ravel(feature_groups)
+        new_feature_objs = []
+        new_Imap_inv = []
+
+        # First, iterate over all non-grouped features
+        for i in range(len(self.Imap_inv)):
+            if not i in all_grouped_idxs:
+                new_feature_objs.append( self.feature_objs[i] )
+                new_Imap_inv.append( self.Imap_inv[i] )
+
+        # Second, iterate over all groups of features
+        for feature_group in feature_groups:
+            # The new grouped features are always added to the end
+            new_Imap_inv.append([])
+            for idx in feature_group:
+                new_Imap_inv[-1] += self.Imap_inv[idx]
+            new_feature_objs.append( combined_feature([self.feature_objs[idx] for idx in feature_group]) )
+
         # TODO update the nominal/ordinal attributes
+        feature_copy = deepcopy(self)
+        feature_copy.Imap_inv = new_Imap_inv
+        feature_copy.feature_objs = new_feature_objs
         feature_copy.nominal = []
         feature_copy.ordinal = []
         return feature_copy
