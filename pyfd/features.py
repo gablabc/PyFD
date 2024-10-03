@@ -9,7 +9,7 @@ from copy import deepcopy
 # that takes x and return a string representation of the feature. These are a high level representation
 # e.g. numerical -> (low, medium, high), categorical 3 -> "Married" etc.
 # These representation are primarily used when visualizing local attributions, where the 
-# exact feature values may lack context.
+# exact feature values may lack interpretability.
 
 
 # Boolean feature
@@ -24,7 +24,12 @@ class bool_feature(object):
 
     # map 0->False  1->True
     def __call__(self, x):
-        return f"{self.name}={self.values[round(x)]}"
+        if x == 1:
+            return self.name
+        elif x == 0:
+            return "not" + self.name
+        else:
+            raise Exception("Boolean value must be 0 or 1")
 
 
 # Ordinal/Nominal encoding of categorical features
@@ -82,11 +87,11 @@ class sparse_numerical_feature(object):
     # map feature value to very small, small, medium, large, very large
     def __call__(self, x):
         if x == 0:
-            str_value = str(int(x))
+            str_value = "0"
         else:
             bin_index = np.digitize(x, self.quantiles) - 1
             if bin_index == -1:
-                str_value = "very small"
+                str_value = "very small (out)"
             elif bin_index == 5:
                 str_value = "very large (out)"
             else:
@@ -101,8 +106,8 @@ class integer_feature(object):
     def __init__(self, name, values):
         self.name = name
         self.type = "num_int"
-        self.min = values.min()
-        self.max = values.max()
+        self.min = np.array(values).min()
+        self.max = np.array(values).max()
         self.card = int(self.max - self.min + 1)
 
     # map feature value to very small, small, medium, large, very large
@@ -133,6 +138,7 @@ class percent_feature(object):
             str_value = f"{100*x:.0f}%"
         return self.name + "=" + str_value
 
+
 class combined_feature(object):
     """ Plot the values of joined features e.g. feature1=dog:feature2=42 """
 
@@ -141,8 +147,15 @@ class combined_feature(object):
         self.name = ":".join(self.names)
         self.type = ":".join([obj.type for obj in feature_objs])
         self.card = ":".join([str(obj.card) for obj in feature_objs])
-        self.feature_objs = feature_objs
-        self.n_features = len(feature_objs)
+        self.feature_objs = []
+        for i, feature_obj in enumerate(feature_objs):
+            if type(feature_obj) == combined_feature:
+                # Grouped features are unravelled when grouped again
+                self.feature_objs += feature_obj.feature_objs
+            else:
+                self.feature_objs.append(feature_obj)
+        #print(self.feature_objs)
+        self.n_features = len(self.feature_objs)
 
     # map feature1=value1:feature2=value2
     def __call__(self, x):
@@ -151,7 +164,7 @@ class combined_feature(object):
 
 
 class Features(object):
-    """ Abstraction of the concept of a feature """
+    """ Abstraction of the concept of a set of features """
 
     def __init__(self, X, feature_names, feature_types):
         """
@@ -166,6 +179,7 @@ class Features(object):
             - `'num'` for numerical features
             - `'sparse_num'` for numerical features with many zeros
             - `'bool'` for True/False features
+            - `'percent'` for Percentage features
             - `'num_int'` for integer features
             - `('nominal', 'cat0', 'cat1')` or `('ordinal', 'cat0', 'cat1')` for categorical features
         """
@@ -231,7 +245,7 @@ class Features(object):
     
     def summary(self):
         free_space = [3, 20, 20, 12, 18]
-        print_res =  "|Idx|        Name        |        Type        |    Card    |     I^-1({i})    |\n"
+        print_res =  "|Idx|        Name        |        Type        |    Card    |      Groups      |\n"
         print_res += "-------------------------------------------------------------------------------\n"
         for i in range(len(self.Imap_inv)):
             print_res += "|"
@@ -273,6 +287,7 @@ class Features(object):
         feature_copy = deepcopy(self)
         feature_copy.Imap_inv = []
         feature_copy.feature_objs = []
+        # TODO update the nominal/ordonal attributes
         feature_copy.nominal = []
         feature_copy.ordinal = []
 
@@ -337,14 +352,14 @@ class Features(object):
                 feature_copy.feature_objs.append( self.feature_objs[feature_group[0]] )
             else:
                 feature_copy.feature_objs.append( combined_feature([self.feature_objs[idx] for idx in feature_group]) )
-
+        # TODO update the nominal/ordinal attributes
         feature_copy.nominal = []
         feature_copy.ordinal = []
         return feature_copy
 
 
 
-# Debugging
+# Visual Testing
 if __name__ == "__main__":
     X = np.column_stack((np.random.uniform(-1, 1, size=(1000,)),
                           np.random.randint(0, 2, size=(1000,)),
