@@ -113,7 +113,7 @@ def get_data_compas():
               "juv_misd_count" : "Juv_misds"})
     X = X.to_numpy().astype(np.float64)
     # New Features to keep
-    features = ['Sex', 'Race', 'Charge', 'Priors', 'Age', 'JuvFelonies', 'JuvMisds']
+    feature_names = ['Sex', 'Race', 'Charge', 'Priors', 'Age', 'JuvFelonies', 'JuvMisds']
 
     # Target
     # y = df["decile_score"].to_numpy().astype(np.float64)
@@ -130,7 +130,7 @@ def get_data_compas():
         "num_int"
     ]
 
-    features = Features(X, features, feature_types)
+    features = Features(X, feature_names, feature_types)
 
     return X, y, features
 

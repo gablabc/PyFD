@@ -13,9 +13,8 @@ def setup_Features():
                           np.random.uniform(-1, 1, size=(1000,)),
                           np.random.randint(0, 2, size=(1000,))
     ))
-    features = Features(X, feature_names=[f"x{i}" for i in range(5)],
-                        feature_types=["num", "num_int", "num", "num", ("nominal", "cat", "dog")]
-                        )
+    features = Features(X, names=[f"x{i}" for i in range(5)],
+                        types=["num", "num_int", "num", "num", ("nominal", "cat", "dog")])
     return features
 
 

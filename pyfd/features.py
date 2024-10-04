@@ -167,15 +167,15 @@ class combined_feature(object):
 class Features(object):
     """ Abstraction of the concept of a set of features """
 
-    def __init__(self, X, feature_names, feature_types):
+    def __init__(self, X, names, types):
         """
         Parameters
         ----------
         X : (N, d) numpy array
             Dataset
-        features_names : List(str)
+        names : List(str)
             Names of the features for each column
-        feature_types : List(str)
+        types : List(str)
             A list indicating the type of each feature
             - `'num'` for numerical features
             - `'sparse_num'` for numerical features with many zeros
@@ -186,8 +186,8 @@ class Features(object):
         """
         
         self.d = X.shape[1]
-        assert self.d == len(feature_names), "feature_names must be of length d"
-        assert self.d == len(feature_types), "feature_types must be of length d"
+        assert self.d == len(names), "feature names must be of length d"
+        assert self.d == len(types), "feature types must be of length d"
         # Each feature map to which X columns
         self.Imap_inv = [[i] for i in range(self.d)]
 
@@ -195,35 +195,33 @@ class Features(object):
         self.nominal = []
         # A list of feature objects
         self.feature_objs = []
-        for i, feature_type in enumerate(feature_types):
+        for i, feature_type in enumerate(types):
             # If its a list then the feature is categorical
             if type(feature_type) in (list, tuple):
-                self.feature_objs.append(cat_feature(feature_names[i],
-                                                     feature_type[0], 
-                                                     feature_type[1:]))
+                self.feature_objs.append(cat_feature(names[i], feature_type[0], feature_type[1:]))
                 if feature_type[0] == "nominal":
                     self.nominal.append(i)
             else:   
                 if feature_type == "num":
-                    self.feature_objs.append(numerical_feature(feature_names[i], X[:, i]))
+                    self.feature_objs.append(numerical_feature(names[i], X[:, i]))
                     
                 elif feature_type == "sparse_num":
-                    self.feature_objs.append(sparse_numerical_feature(feature_names[i], X[:, i]))
+                    self.feature_objs.append(sparse_numerical_feature(names[i], X[:, i]))
                     
                 elif feature_type == "bool":
-                    self.feature_objs.append(bool_feature(feature_names[i]))
+                    self.feature_objs.append(bool_feature(names[i]))
                     
                 elif feature_type == "num_int":
-                    self.feature_objs.append(integer_feature(feature_names[i], X[:, i]))
+                    self.feature_objs.append(integer_feature(names[i], X[:, i]))
 
                 elif feature_type == "percent":
-                    self.feature_objs.append(percent_feature(feature_names[i]))
+                    self.feature_objs.append(percent_feature(names[i]))
 
                 else:
                     raise ValueError("Wrong feature type")
                     
         # ordinal features are naturally represented with numbers
-        self.ordinal = list( set(range(len(feature_types))) - set(self.nominal) )
+        self.ordinal = list( set(range(len(types))) - set(self.nominal) )
     
     def print_value(self, x):
         """ Map values of x into interpretable text """
@@ -375,9 +373,8 @@ if __name__ == "__main__":
                           np.random.uniform(-1, 1, size=(1000,)),
                           np.random.randint(0, 2, size=(1000,))
     ))
-    features = Features(X, feature_names=[f"x{i}" for i in range(5)],
-                        feature_types=["num", "num_int", "num", "num", ("nominal", "cat", "dog")]
-                        )
+    features = Features(X, names=[f"x{i}" for i in range(5)],
+                        types=["num", "num_int", "num", "num", ("nominal", "cat", "dog")])
     features.summary()
     print(features.names())
     print(features.types())
