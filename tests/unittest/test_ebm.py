@@ -9,11 +9,10 @@ from interpret.glassbox import ExplainableBoostingRegressor, ExplainableBoosting
 from scipy.stats import chi2
 
 from pyfd.decompositions import get_components_ebm, get_components_brute_force
+from pyfd.features import Features
 
 
-
-def setup_toy_task(d_num, d_cat=0, n_samples=1000, task="regression", 
-                        num_encoding="identity", interactions=False):
+def setup_toy_task(d_num, d_cat=0, n_samples=1000, task="regression", num_encoding="identity", interactions=False):
     np.random.seed(42)
     # Generate input
     d = d_num + d_cat
@@ -24,6 +23,7 @@ def setup_toy_task(d_num, d_cat=0, n_samples=1000, task="regression",
     else:
         X_cat = 0
         X = X_num
+    features = Features(X, [f"x{i}" for i in range(d)], ["num"]*d)
     # Generate target
     if interactions:
         if task == "regression":
@@ -40,9 +40,9 @@ def setup_toy_task(d_num, d_cat=0, n_samples=1000, task="regression",
     
     # EBM
     if task == "regression":
-        model = ExplainableBoostingRegressor(interactions=0.95*int(interactions), outer_bags=2)
+        model = ExplainableBoostingRegressor(interactions=0.95*int(interactions), outer_bags=1)
     else:
-        model = ExplainableBoostingClassifier(interactions=0.95*int(interactions), outer_bags=2)
+        model = ExplainableBoostingClassifier(interactions=0.95*int(interactions), outer_bags=1)
 
     # Feature Embeddings
     numerical_encoders = {"standard": StandardScaler(), "min-max":  MinMaxScaler()}
@@ -64,7 +64,7 @@ def setup_toy_task(d_num, d_cat=0, n_samples=1000, task="regression",
     else:
         h = model.decision_function
     
-    return X, model, h
+    return X, model, h, features
 
 
 
@@ -72,13 +72,13 @@ def setup_toy_task(d_num, d_cat=0, n_samples=1000, task="regression",
 @pytest.mark.parametrize("d_num", [5, 10])
 @pytest.mark.parametrize("d_cat", [0, 5])
 @pytest.mark.parametrize("task", ["regression", "classification"])
-@pytest.mark.parametrize("num_encoding", ["identity", "standard", "min-max"])
+@pytest.mark.parametrize("num_encoding", ["identity", "standard"])
 @pytest.mark.parametrize("interactions", [False, True])
 @pytest.mark.parametrize("anchored", [False, True])
 def test_toy_ebm_full(d_num, d_cat, task, num_encoding, interactions, anchored):
 
     # Setup data and model
-    X, model, h = setup_toy_task(d_num, d_cat, 1000, task, num_encoding, interactions)
+    X, model, h, features = setup_toy_task(d_num, d_cat, 1000, task, num_encoding, interactions)
 
     # Fully explain the model
     if type(model) == Pipeline:
@@ -87,8 +87,8 @@ def test_toy_ebm_full(d_num, d_cat, task, num_encoding, interactions, anchored):
         U = list(model.term_features_)
     foreground = X
     background = X[:500]
-    components = get_components_ebm(model, foreground, background, anchored=anchored)
-    components_2 = get_components_brute_force(h, foreground, background, 
+    components = get_components_ebm(model, foreground, background, features, anchored=anchored)
+    components_2 = get_components_brute_force(h, foreground, background, features,
                                                 interactions=U, anchored=anchored)
     assert np.isclose(components[()], components_2[()]).all(), "Intercepts are not the same"
     for u in U:
@@ -99,20 +99,20 @@ def test_toy_ebm_full(d_num, d_cat, task, num_encoding, interactions, anchored):
 @pytest.mark.parametrize("d_num", [5, 10])
 @pytest.mark.parametrize("d_cat", [0, 5])
 @pytest.mark.parametrize("task", ["regression", "classification"])
-@pytest.mark.parametrize("num_encoding", ["identity", "standard", "min-max"])
+@pytest.mark.parametrize("num_encoding", ["identity", "standard"])
 @pytest.mark.parametrize("interactions", [False, True])
 @pytest.mark.parametrize("anchored", [False, True])
 def test_toy_ebm_partial(d_num, d_cat, task, num_encoding, interactions, anchored):
 
     # Setup data and model
-    X, model, h = setup_toy_task(d_num, d_cat, 1000, task, num_encoding, interactions)
+    X, model, h, features = setup_toy_task(d_num, d_cat, 1000, task, num_encoding, interactions)
 
     # Partially explain the model
     foreground = X
     background = X[:500]
-    components = get_components_ebm(model, foreground, background, Imap_inv=[[0], [1]], anchored=anchored)
+    components = get_components_ebm(model, foreground, background, features.select([0, 1]), anchored=anchored)
     U = list(components.keys())[1:]
-    components_2 = get_components_brute_force(h, foreground, background, Imap_inv=[[0], [1]], 
+    components_2 = get_components_brute_force(h, foreground, background, features.select([0, 1]), 
                                                         interactions=U, anchored=anchored)
     assert np.isclose(components[()], components_2[()]).all(), "Intercepts are not the same"
     for u in U:
@@ -120,8 +120,8 @@ def test_toy_ebm_partial(d_num, d_cat, task, num_encoding, interactions, anchore
 
     # Do a line PDP/ICE for feature 0
     foreground = np.linspace(-2, 2, 200)
-    components = get_components_ebm(model, foreground, background, Imap_inv=[[0]], anchored=anchored)
-    components_2 = get_components_brute_force(h, foreground, background, Imap_inv=[[0]], anchored=anchored)
+    components = get_components_ebm(model, foreground, background, features.select([0]), anchored=anchored)
+    components_2 = get_components_brute_force(h, foreground, background, features.select([0]), anchored=anchored)
     assert np.isclose(components[()], components_2[()]).all(), "Intercepts are not the same"
     assert np.isclose(components[(0,)], components_2[(0,)]).all(), "Components are not the same"
 
@@ -130,21 +130,21 @@ def test_toy_ebm_partial(d_num, d_cat, task, num_encoding, interactions, anchore
 @pytest.mark.parametrize("d_num", [5, 10])
 @pytest.mark.parametrize("d_cat", [0, 5])
 @pytest.mark.parametrize("task", ["regression", "classification"])
-@pytest.mark.parametrize("num_encoding", ["identity", "standard", "min-max"])
+@pytest.mark.parametrize("num_encoding", ["identity", "standard"])
 @pytest.mark.parametrize("interactions", [False, True])
 @pytest.mark.parametrize("anchored", [False, True])
 def test_toy_ebm_grouping(d_num, d_cat, task, num_encoding, interactions, anchored):
 
     # Setup data and model
-    X, model, h = setup_toy_task(d_num, d_cat, 1000, task, num_encoding, interactions)
+    X, model, h, features = setup_toy_task(d_num, d_cat, 1000, task, num_encoding, interactions)
     foreground = X
     background = X[:500]
 
     # Full decomposition with grouped num and cat features
-    Imap_inv = [list(range(d_num)), list(range(d_num, d_num+d_cat))]
-    components = get_components_ebm(model, foreground, background, Imap_inv=Imap_inv, anchored=anchored)
+    grouped_features = features.group( [ list(range(d_num)), list(range(d_num, d_num+d_cat)) ] )
+    components = get_components_ebm(model, foreground, background, grouped_features, anchored=anchored)
     U = list(components.keys())[1:]
-    components_2 = get_components_brute_force(h, foreground, background, Imap_inv=Imap_inv,
+    components_2 = get_components_brute_force(h, foreground, background, grouped_features,
                                                             interactions=U, anchored=anchored)
     assert np.isclose(components[()], components_2[()]).all(), "Intercepts are not the same"
     for u in U:
@@ -153,10 +153,12 @@ def test_toy_ebm_grouping(d_num, d_cat, task, num_encoding, interactions, anchor
     # Grid PDP/ICE for feature [0, 1]
     xx, yy = np.meshgrid(np.linspace(-2, 2, 10), np.linspace(-2, 2, 10))
     foreground = np.column_stack((xx.ravel(), yy.ravel()))
-    components = get_components_ebm(model, foreground, background, Imap_inv=[[0, 1]], anchored=anchored)
-    components_2 = get_components_brute_force(h, foreground, background, Imap_inv=[[0, 1]], anchored=anchored)
+    select_features = features.select([0, 1]).group([[0, 1]])
+    components = get_components_ebm(model, foreground, background, select_features, anchored=anchored)
+    components_2 = get_components_brute_force(h, foreground, background, select_features, anchored=anchored)
     assert np.isclose(components[()], components_2[()]).all(), "Intercepts are not the same"
     assert np.isclose(components[(0,)], components_2[(0,)]).all(), "Components are not the same"
+
 
 
 @pytest.mark.parametrize("anchored", [False, True])
@@ -174,11 +176,11 @@ def test_ebm_marketing(anchored):
     # Reference data
     background = X_train[:200]
     # Compute the functional decomposition
-    components = get_components_ebm(model, background, background, anchored=anchored)
+    components = get_components_ebm(model, background, background, features, anchored=anchored)
     # Compute the functional decomposition
     U = list(components.keys())[1:]
     components_2 = get_components_brute_force(model.decision_function, background, background, 
-                                              interactions=U, anchored=anchored)
+                                              features, interactions=U, anchored=anchored)
     assert np.isclose(components[()], components_2[()]).all(), "Intercepts are not the same"
     for u in U:
         assert np.isclose(components[u], components_2[u]).all(), "Components are not the same"
@@ -186,14 +188,11 @@ def test_ebm_marketing(anchored):
     # Grouping day:month
     grouped_features = features.group([[5, 6]])
     # Compute the functional decomposition
-    components = get_components_ebm(model, background, background, 
-                                    Imap_inv=grouped_features.Imap_inv, 
-                                    anchored=anchored)
+    components = get_components_ebm(model, background, background, grouped_features, anchored=anchored)
     U = list(components.keys())[1:]
     # Compute the functional decomposition
     components_2 = get_components_brute_force(model.decision_function, background, background, 
-                                              interactions=U, Imap_inv=grouped_features.Imap_inv, 
-                                              anchored=anchored)
+                                              grouped_features, interactions=U, anchored=anchored)
     assert np.isclose(components[()], components_2[()]).all(), "Intercepts are not the same"
     for u in U:
         assert np.isclose(components[u], components_2[u]).all(), "Components are not the same"

@@ -10,7 +10,7 @@ from sklearn.preprocessing import KBinsDiscretizer, OneHotEncoder, StandardScale
 from scipy.stats import chi2
 
 from pyfd.decompositions import get_components_linear, get_components_brute_force
-
+from pyfd.features import Features
 
 
 def setup_toy_task(d_num, d_cat=0, n_samples=500, task="regression"):
@@ -24,6 +24,7 @@ def setup_toy_task(d_num, d_cat=0, n_samples=500, task="regression"):
     else:
         X_cat = 0
         X = X_num
+    features = Features(X, [f"x{i}" for i in range(d)], ["num"]*d)
     # Generate target
     if task == "regression":
         y = ((0.5+X)**2).mean(1)
@@ -31,7 +32,7 @@ def setup_toy_task(d_num, d_cat=0, n_samples=500, task="regression"):
         threshold = np.sqrt(chi2(df=d).ppf(0.5))
         y = (np.linalg.norm(X_num, axis=1) > threshold).astype(int)
         
-    return X, y.ravel()
+    return X, y.ravel(), features
 
 
 
@@ -45,7 +46,7 @@ def test_toy_linear(d_num, d_cat, task, num_encoding):
 
     # Setup data and model
     d = d_num + d_cat
-    X, y = setup_toy_task(d_num, d_cat, 1000, task)
+    X, y, features = setup_toy_task(d_num, d_cat, 1000, task)
     numerical_encoders = {"identity": FunctionTransformer(),
                           "bins": KBinsDiscretizer(encode='onehot-dense'),
                           "splines-bias":  SplineTransformer(n_knots=4, knots='quantile', include_bias=True),
@@ -67,14 +68,14 @@ def test_toy_linear(d_num, d_cat, task, num_encoding):
     # Explain the model
     foreground = X
     background = X
-    components = get_components_linear(model, foreground, background)
+    components = get_components_linear(model, foreground, background, features)
 
     # Sanity check
     if task == "regression":
         h = model.predict
     else:
         h = model.decision_function
-    components_2 = get_components_brute_force(h, foreground, background)
+    components_2 = get_components_brute_force(h, foreground, background, features)
     for i in range(d):
         assert np.isclose(components[(i,)], components_2[(i,)].mean(1)).all()
 

@@ -8,7 +8,7 @@ from xgboost import XGBClassifier, XGBRegressor
 import numpy as np
 from scipy.stats import chi2
 
-
+from pyfd.features import Features
 
 def setup_toy(d, correlations, model_name, task):
     np.random.seed(42)
@@ -19,7 +19,7 @@ def setup_toy(d, correlations, model_name, task):
         X = np.random.multivariate_normal(mean=mu, cov=sigma, size=(1000,))
     else:
         X = np.random.normal(0, 1, size=(1000, d))
-    
+    features = Features(X, [f"x{i}" for i in range(d)], ["num"]*d)
     # from sklearn.preprocessing import StandardScaler
     # X = StandardScaler().fit_transform(X)
 
@@ -58,7 +58,7 @@ def setup_toy(d, correlations, model_name, task):
             black_box = model.decision_function
         else:
             black_box = lambda x :model.predict(x, output_margin=True)
-    return X, y, model, black_box
+    return X, y, model, black_box, features
 
 
 
@@ -73,12 +73,6 @@ def setup_adult(with_ohe, model_name, grouping):
 
     X, y, features  = get_data_adults(use_target_encoder=not with_ohe)
 
-    # Some arbitrary feature groups
-    if grouping:
-        Imap_inv = [[0], [1], [2, 3, 4], [5], [6], [7, 8, 9], [10, 11]]
-    # Each feature is its own group
-    else:
-        Imap_inv = [[i] for i in range(X.shape[1])]
     if with_ohe:
         ohe = ColumnTransformer([
                                 ('id', FunctionTransformer(), features.ordinal),
@@ -103,7 +97,10 @@ def setup_adult(with_ohe, model_name, grouping):
         model.fit(X, y)
         black_box = lambda x :model.predict(x, output_margin=True).astype(np.float64)
     
-    return X, model, black_box, Imap_inv
+    # Some arbitrary feature groups
+    if grouping:
+        features = features.group( [[2, 3, 4], [7, 8, 9], [10, 11]] )
+    return X, model, black_box, features
 
 
 
@@ -111,14 +108,7 @@ def setup_bike(model_name, grouping):
 
     from pyfd.data import get_data_bike
 
-    X, y, _  = get_data_bike()
-
-    # Some arbitrary feature groups
-    if grouping:
-        Imap_inv = [[0], [1], [2], [3, 4, 5, 6, 7], [8, 9]]
-    # Each feature is its own group
-    else:
-        Imap_inv = [[i] for i in range(X.shape[1])]
+    X, y, features  = get_data_bike()
 
     # Fit model
     if model_name == "rf":
@@ -130,7 +120,11 @@ def setup_bike(model_name, grouping):
     model.fit(X, y)
     black_box = lambda x : model.predict(x)
     
-    return X, model, black_box, Imap_inv
+    # Some arbitrary feature groups
+    if grouping:
+        features = features.group( [[3, 4, 5, 6, 7], [8, 9]] )
+
+    return X, model, black_box, features
 
 
 
@@ -138,14 +132,8 @@ def setup_california(model_name, grouping):
 
     from pyfd.data import get_data_california_housing
 
-    X, y, _  = get_data_california_housing()
+    X, y, features  = get_data_california_housing()
 
-    # Some arbitrary feature groups
-    if grouping:
-        Imap_inv = [[0], [1], [2], [3, 4, 5], [6, 7]]
-    # Each feature is its own group
-    else:
-        Imap_inv = [[i] for i in range(X.shape[1])]
 
     # Fit model
     if model_name == "rf":
@@ -157,7 +145,11 @@ def setup_california(model_name, grouping):
     model.fit(X, y)
     black_box = lambda x : model.predict(x)
     
-    return X, model, black_box, Imap_inv
+    # Some arbitrary feature groups
+    if grouping:
+        features = features.group( [[3, 4, 5], [6, 7]] )
+
+    return X, model, black_box, features
 
 
 
@@ -165,14 +157,7 @@ def setup_compas(model_name, grouping):
 
     from pyfd.data import get_data_compas
 
-    X, y, _  = get_data_compas()
-
-    # Some arbitrary feature groups
-    if grouping:
-        Imap_inv = [[0, 1, 2], [3], [4], [5, 6]]
-    # Each feature is its own group
-    else:
-        Imap_inv = [[i] for i in range(X.shape[1])]
+    X, y, features  = get_data_compas()
 
     # Fit model
     if model_name == "rf":
@@ -188,4 +173,8 @@ def setup_compas(model_name, grouping):
         model.fit(X, y)
         black_box = lambda x :model.predict(x, output_margin=True)
     
-    return X, model, black_box, Imap_inv
+    # Some arbitrary feature groups
+    if grouping:
+        features = features.group( [[0, 1, 2], [5, 6]] )
+
+    return X, model, black_box, features

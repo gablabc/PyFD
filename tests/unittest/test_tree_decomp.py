@@ -8,7 +8,7 @@ from pyfd.decompositions import get_components_brute_force, get_components_tree
 from utils import setup_toy, setup_adult, setup_bike, setup_california, setup_compas
 
 
-def compare_recursive_brute(X, model, black_box, sym=False, Imap_inv=None):
+def compare_recursive_brute(X, model, black_box, features, sym=False):
     if X.shape[0] > 500:
         X = X[:500]
     background = X[:100]
@@ -17,10 +17,10 @@ def compare_recursive_brute(X, model, black_box, sym=False, Imap_inv=None):
         X = background
 
     # Run the tree decomp (non-anchored)
-    tree_decomp = get_components_tree(model, X, background, anchored=False, Imap_inv=Imap_inv)
+    tree_decomp = get_components_tree(model, X, background, features, anchored=False)
     
     # Run the brute force method (non-anchored)
-    brute_decomp = get_components_brute_force(black_box, X, background, anchored=False, Imap_inv=Imap_inv)
+    brute_decomp = get_components_brute_force(black_box, X, background, features, anchored=False)
 
     # Make sure we output the same result
     for key in tree_decomp.keys():
@@ -28,10 +28,10 @@ def compare_recursive_brute(X, model, black_box, sym=False, Imap_inv=None):
     
 
     # Run the tree decomp (anchored)
-    tree_decomp = get_components_tree(model, X, background, anchored=True, Imap_inv=Imap_inv)
+    tree_decomp = get_components_tree(model, X, background, features, anchored=True)
 
     # Run the brute force method (anchored)
-    brute_decomp = get_components_brute_force(black_box, X, background, anchored=True, Imap_inv=Imap_inv)
+    brute_decomp = get_components_brute_force(black_box, X, background, features, anchored=True)
 
     # Make sure we output the same result
     for key in tree_decomp.keys():
@@ -39,13 +39,13 @@ def compare_recursive_brute(X, model, black_box, sym=False, Imap_inv=None):
 
 
 
-def compare_recursive_leaf(X, model, Imap_inv=None):
+def compare_recursive_leaf(X, model, features):
     if X.shape[0] > 500:
         X = X[:500]
     background = X[:100]
 
-    recurse_decomp = get_components_tree(model, X, background, Imap_inv=Imap_inv)
-    leaf_decomp = get_components_tree(model, X, background, Imap_inv=Imap_inv, algorithm="leaf")
+    recurse_decomp = get_components_tree(model, X, background, features)
+    leaf_decomp = get_components_tree(model, X, background, features, algorithm="leaf")
 
     # Make sure we output the same result
     for key in recurse_decomp.keys():
@@ -67,13 +67,13 @@ def compare_recursive_leaf(X, model, Imap_inv=None):
 def test_toy_implementation(sym, d, correlations, task, model_name):
 
     # Setup data and model
-    X, y, model, black_box = setup_toy(d, correlations, model_name, task)
+    X, y, model, black_box, features = setup_toy(d, correlations, model_name, task)
 
     # Compare Additive with the brute-force approach
-    compare_recursive_brute(X, model, black_box, sym)
+    compare_recursive_brute(X, model, black_box, features, sym)
 
     # Compare leafshap and treeshap
-    compare_recursive_leaf(X, model)
+    compare_recursive_leaf(X, model, features)
 
 
 
@@ -85,17 +85,17 @@ def test_toy_coallition(d, task, model_name):
     np.random.seed(42)
 
     # Setup data and model
-    X, y, model, black_box = setup_toy(d, False, model_name, task)
+    X, y, model, black_box, features = setup_toy(d, False, model_name, task)
 
     # Determine coallitions
     n_coallitions = d//4
-    Imap_inv = [list(range(i*4, (i+1)*4)) for i in range(n_coallitions)]
+    grouped_features = features.group( [list(range(i*4, (i+1)*4)) for i in range(n_coallitions)] )
 
     # Compare additive with the brute-force approach
-    compare_recursive_brute(X, model, black_box, sym=False, Imap_inv=Imap_inv)
+    compare_recursive_brute(X, model, black_box, grouped_features, sym=False)
 
     # Compare leafshap and treeshap
-    compare_recursive_leaf(X, model, Imap_inv)
+    compare_recursive_leaf(X, model, grouped_features)
 
 
 
@@ -105,10 +105,10 @@ def test_toy_coallition(d, task, model_name):
 @pytest.mark.parametrize("grouping", [False, True])
 def test_adult(with_ohe, model_name, grouping):
 
-    X, model, black_box, Imap_inv = setup_adult(with_ohe, model_name, grouping)
+    X, model, black_box, features = setup_adult(with_ohe, model_name, grouping)
 
     # Compare additive decompositions
-    compare_recursive_brute(X, model, black_box, Imap_inv=Imap_inv)
+    compare_recursive_brute(X, model, black_box, features)
 
 
 
@@ -117,10 +117,10 @@ def test_adult(with_ohe, model_name, grouping):
 @pytest.mark.parametrize("grouping", [False, True])
 def test_bike(model_name, grouping):
 
-    X, model, black_box, Imap_inv = setup_bike(model_name, grouping)
+    X, model, black_box, features = setup_bike(model_name, grouping)
 
     # Compare additive decompositions
-    compare_recursive_brute(X, model, black_box, Imap_inv=Imap_inv)
+    compare_recursive_brute(X, model, black_box, features)
 
 
 
@@ -129,12 +129,10 @@ def test_bike(model_name, grouping):
 @pytest.mark.parametrize("grouping", [False, True])
 def test_california(model_name, grouping):
 
-    X, model, black_box, Imap_inv = setup_california(model_name, grouping)
+    X, model, black_box, features = setup_california(model_name, grouping)
 
     # Compare additive decompositions
-    compare_recursive_brute(X, model, black_box, Imap_inv=Imap_inv)
-
-
+    compare_recursive_brute(X, model, black_box, features)
 
 
 
@@ -143,14 +141,14 @@ def test_california(model_name, grouping):
 @pytest.mark.parametrize("grouping", [False, True])
 def test_compas(model_name, grouping):
 
-    X, model, black_box, Imap_inv = setup_compas(model_name, grouping)
+    X, model, black_box, features = setup_compas(model_name, grouping)
 
     # Compare additive decompositions
-    compare_recursive_brute(X, model, black_box, Imap_inv=Imap_inv)
+    compare_recursive_brute(X, model, black_box, features)
 
 
 
 if __name__ == "__main__":
-    test_toy_implementation(False, 4, False, "classification", "rf")
+    test_adult(True, "gbt", False)
     
 

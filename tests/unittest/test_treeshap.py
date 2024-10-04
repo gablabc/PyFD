@@ -10,7 +10,7 @@ from pyfd.shapley import interventional_treeshap, taylor_treeshap
 from utils import setup_toy, setup_adult, setup_bike, setup_california, setup_compas
 
 
-def compare_shap_implementations(X, model, black_box, sym=False, algorithm="recurse"):
+def compare_shap_implementations(X, model, black_box, features, sym=False, algorithm="recurse"):
     if X.shape[0] > 500:
         X = X[:500]
     background = X[:100]
@@ -19,7 +19,7 @@ def compare_shap_implementations(X, model, black_box, sym=False, algorithm="recu
         X = background
 
     # Run the custom treeshap (non-anchored)
-    custom_shap = interventional_treeshap(model, X, background, anchored=False, algorithm=algorithm)
+    custom_shap = interventional_treeshap(model, X, background, features, anchored=False, algorithm=algorithm)
 
     # Run the exact explainer
     masker = Independent(background, max_samples=100)
@@ -29,10 +29,9 @@ def compare_shap_implementations(X, model, black_box, sym=False, algorithm="recu
     # Make sure we output the same result
     assert np.isclose(orig_shap, custom_shap).all(), "Non-Anchored Different from ExactExplainer"
 
-
     # Run the custom treeshap (anchored)
     if algorithm == "recurse":
-        custom_shap = interventional_treeshap(model, X, background, anchored=True, algorithm=algorithm)
+        custom_shap = interventional_treeshap(model, X, background, features, anchored=True, algorithm=algorithm)
 
         # Make sure we output the same result
         assert np.isclose(orig_shap, custom_shap.mean(1)).all(), "Anchored Different from ExactExplainer"
@@ -43,7 +42,7 @@ def compare_shap_implementations(X, model, black_box, sym=False, algorithm="recu
 
 
 
-def check_shap_coallition(X, model, black_box, Imap_inv):
+def check_shap_coallition(X, model, black_box, features):
     if X.shape[0] > 500:
         X = X[:500]
     background = X[:100]
@@ -52,21 +51,21 @@ def check_shap_coallition(X, model, black_box, Imap_inv):
     gaps = black_box(X) - black_box(background).mean()
     
     # Run the recurse treeshap
-    recurse_shap = interventional_treeshap(model, X, background, Imap_inv=Imap_inv, algorithm="recurse")
-    assert recurse_shap.shape[1] == len(Imap_inv), "Not one SHAP value per coallition"
+    recurse_shap = interventional_treeshap(model, X, background, features, algorithm="recurse")
+    assert recurse_shap.shape[1] == len(features), "Not one SHAP value per coallition"
 
     # Make sure the SHAP values add up to the gaps
     assert np.isclose(gaps, recurse_shap.sum(1)).all(), "Recurse treeSHAP does not sum to h(x) - E[h(z)]"
 
     # Run the custom treeshap
-    leaf_shap = interventional_treeshap(model, X, background, Imap_inv=Imap_inv, algorithm="leaf")
+    leaf_shap = interventional_treeshap(model, X, background, features, algorithm="leaf")
 
     # Make sure the recurse and leaf lead to the same result
     assert np.isclose(recurse_shap, leaf_shap).all(), "Recurse and Leaf algorithms do not agree"
 
 
 
-def compare_shap_taylor_implementations(X, model, black_box):
+def compare_shap_taylor_implementations(X, model, black_box, features):
     if X.shape[0] > 50:
         X = X[:50]
     # Run the original treeshap
@@ -75,13 +74,13 @@ def compare_shap_taylor_implementations(X, model, black_box):
     orig_shap_taylor = explainer(X, interactions=2).values
 
     # Run the custom treeshap
-    custom_shap_taylor = taylor_treeshap(model, X, X)
+    custom_shap_taylor = taylor_treeshap(model, X, X, features)
 
     # Make sure we output the same result
     assert np.isclose(orig_shap_taylor, custom_shap_taylor).all()
 
     # Make sure that shap_taylor sums up to shap
-    custom_shap = interventional_treeshap(model, X, X)
+    custom_shap = interventional_treeshap(model, X, X, features)
     assert np.isclose(custom_shap_taylor.sum(-1), custom_shap).all()
 
 
@@ -99,13 +98,13 @@ def compare_shap_taylor_implementations(X, model, black_box):
 def test_toy_recurse_implementation(sym, d, correlations, task, model_name):
 
     # Setup data and model
-    X, y, model, black_box = setup_toy(d, correlations, model_name, task)
+    X, y, model, black_box, features = setup_toy(d, correlations, model_name, task)
 
     # Compute SHAP values
-    compare_shap_implementations(X, model, black_box, sym)
+    compare_shap_implementations(X, model, black_box, features, sym)
 
     # Compute Shapley-Taylor values
-    compare_shap_taylor_implementations(X, model, black_box)
+    compare_shap_taylor_implementations(X, model, black_box, features)
 
 
 
@@ -117,10 +116,10 @@ def test_toy_recurse_implementation(sym, d, correlations, task, model_name):
 def test_toy_leaf_implementation(d, correlations, task, model_name):
 
     # Setup data and model
-    X, y, model, black_box = setup_toy(d, correlations, model_name, task)
+    X, y, model, black_box, features = setup_toy(d, correlations, model_name, task)
 
     # Compute SHAP values
-    compare_shap_implementations(X, model, black_box, algorithm="leaf")
+    compare_shap_implementations(X, model, black_box, features, algorithm="leaf")
 
 
 
@@ -132,14 +131,13 @@ def test_toy_coallition(d, task, model_name):
     np.random.seed(42)
 
     # Setup data and model
-    X, y, model, black_box = setup_toy(d, False, model_name, task)
+    X, y, model, black_box, features = setup_toy(d, False, model_name, task)
 
     # Determine coallitions
     n_coallitions = d//4
-    Imap_inv = [list(range(i*4, (i+1)*4)) for i in range(n_coallitions)]
-
+    grouped_features = features.group( [list(range(i*4, (i+1)*4)) for i in range(n_coallitions)] )
     # Compute SHAP values
-    check_shap_coallition(X, model, black_box, Imap_inv)
+    check_shap_coallition(X, model, black_box, grouped_features)
 
 
 

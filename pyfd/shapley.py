@@ -51,7 +51,7 @@ def shap_from_decomposition(decomposition):
 #######################################################################################
 
 
-def permutation_shap(h, foreground, background, Imap_inv=None, M=20, show_bar=True, reversed=True, return_nu_evals=False):
+def permutation_shap(h, foreground, background, features, M=20, show_bar=True, reversed=True, return_nu_evals=False):
     """
     Approximate the Shapley Values of any black box by sampling M permutations
 
@@ -63,9 +63,8 @@ def permutation_shap(h, foreground, background, Imap_inv=None, M=20, show_bar=Tr
         The data points at which to evaluate the shapley values.
     background : (Nb, d) np.ndarray
         The data points at which to anchor the shapley values.
-    Imap_inv : List(List(int)), default=None
-        A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
-        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature
+    features : Features
+        A Features object that represents which columns of X are treated as groups.
     M : int, default=20
         Number of permutations to sample.
     show_bar : bool, default=True
@@ -82,6 +81,7 @@ def permutation_shap(h, foreground, background, Imap_inv=None, M=20, show_bar=Tr
     """
 
     # Setup Imap_inv
+    Imap_inv = features.Imap_inv
     Imap_inv, D, is_full_partition = check_Imap_inv(Imap_inv, background.shape[1])
     assert is_full_partition, "PermutationSHAP requires Imap_inv to be a partition of the input columns"
     N_eval = foreground.shape[0]
@@ -148,7 +148,7 @@ def permutation_shap(h, foreground, background, Imap_inv=None, M=20, show_bar=Tr
 
 
 
-def lattice_shap(h, foreground, background, interactions, Imap_inv=None, show_bar=True, return_nu_evals=False):
+def lattice_shap(h, foreground, background, features, interactions, show_bar=True, return_nu_evals=False):
     """
     Approximate the Shapley Values of any black box given a subsample of the lattice-space
 
@@ -160,11 +160,10 @@ def lattice_shap(h, foreground, background, interactions, Imap_inv=None, show_ba
         The data points at which to evaluate the shapley values.
     background : (Nb, d) np.ndarray
         The data points at which to anchor the shapley values.
+    features : Features
+        A Features object that represents which columns of X are treated as groups.
     interactions : List(Tuple(int))
         List of tuples representing the lattice space.
-    Imap_inv : List(List(int)), default=None
-        A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
-        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature
     show_bar : bool, default=True
         Flag to decide if progress bar is shown.
     return_nu_evals : bool, default=False
@@ -181,6 +180,7 @@ def lattice_shap(h, foreground, background, interactions, Imap_inv=None, show_ba
     S = len(interactions)
 
     # Setup Imap_inv
+    Imap_inv = features.Imap_inv
     Imap_inv, D, is_full_partition = check_Imap_inv(Imap_inv, background.shape[1])
     assert is_full_partition, "LatticeSHAP requires Imap_inv to be a partition of the input columns"
     N_eval = foreground.shape[0]
@@ -223,7 +223,7 @@ def lattice_shap(h, foreground, background, interactions, Imap_inv=None, show_ba
 
 
 
-def interventional_treeshap(model, foreground, background, Imap_inv=None, anchored=False, algorithm="recurse"):
+def interventional_treeshap(model, foreground, background, features, anchored=False, algorithm="recurse"):
     """ 
     Compute the Interventional Shapley Values with the TreeSHAP algorithm.
 
@@ -236,9 +236,8 @@ def interventional_treeshap(model, foreground, background, Imap_inv=None, anchor
         The data points at which to evaluate the shapley values.
     background : (Nb, d) np.ndarray
         The data points at which to anchor the shapley values.
-    Imap_inv : List(List(int)), default=None
-        A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
-        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature.
+    features : Features
+        A Features object that represents which columns of X are treated as groups.
     anchored : bool, default=False
         Flag to compute anchored shapley values or interventional shapley values.
     algorithm : string, default='recurse'
@@ -259,6 +258,7 @@ def interventional_treeshap(model, foreground, background, Imap_inv=None, anchor
         raise Exception("Anchored decompositions are only supported by the `recurse` algorithm")
     
     # Setup
+    Imap_inv = features.Imap_inv
     Imap_inv, _, is_full_partition = check_Imap_inv(Imap_inv, background.shape[1])
     assert is_full_partition, "TreeSHAP requires Imap_inv to be a partition of the input columns"
     Imap, foreground, background, model, ensemble = setup_treeshap(Imap_inv, foreground, background, model)
@@ -343,7 +343,7 @@ def interventional_treeshap(model, foreground, background, Imap_inv=None, anchor
 
 
 
-def taylor_treeshap(model, foreground, background, Imap_inv=None):
+def taylor_treeshap(model, foreground, background, features):
     """ 
     Compute the Shapley-Taylor interaction indices by adapting the the TreeSHAP algorithm
 
@@ -356,9 +356,8 @@ def taylor_treeshap(model, foreground, background, Imap_inv=None):
         The foreground dataset is the set of all points whose prediction we wish to explain.
     background : np.ndarray or pandas.DataFrame
         The background dataset to use for integrating out missing features in the coallitional game.
-    Imap_inv : List(List(int))
-        A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
-        the columns 0 and 1 as a single feature.
+    features : Features
+        A Features object that represents which columns of X are treated as groups.
 
     Returns
     -------
@@ -367,6 +366,7 @@ def taylor_treeshap(model, foreground, background, Imap_inv=None):
     """
 
     # Setup
+    Imap_inv = features.Imap_inv
     Imap_inv, _, is_full_partition = check_Imap_inv(Imap_inv, background.shape[1])
     assert is_full_partition, "TreeSHAP requires Imap_inv to be a partition of the input columns"
     Imap, foreground, background, model, ensemble = setup_treeshap(Imap_inv, foreground, background, model)

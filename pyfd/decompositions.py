@@ -20,7 +20,7 @@ from .utils import get_term_bin_weights, setup_linear, setup_brute_force, setup_
 
 
 
-def get_components_linear(h, foreground, background, Imap_inv=None):
+def get_components_linear(h, foreground, background, features):
     """
     Compute the Interventional Decomposition of Linear Model
 
@@ -32,8 +32,7 @@ def get_components_linear(h, foreground, background, Imap_inv=None):
         The data points at which to evaluate the decomposition.
     background : (Nb, d) np.ndarray
         The data points at which to anchor the decomposition.
-    Imap_inv : List(List(int)), default=None
-        A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
+    features : Features
         the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature.
     
     Returns
@@ -42,10 +41,10 @@ def get_components_linear(h, foreground, background, Imap_inv=None):
         The various components of the decomposition indexed via their feature subset e.g. `decomposition[(0,)]`
         is a (Nf,) np.ndarray.
     """
-
     SKLEARN_LINEAR = [LinearRegression, Ridge, LogisticRegression, PoissonRegressor]
 
     # Setup
+    Imap_inv = features.Imap_inv
     predictor, foreground, background, Imap_inv = setup_linear(h, foreground, background, Imap_inv, SKLEARN_LINEAR)
     # For regression we explain the direct output
     if type(predictor) in [LinearRegression, Ridge, PoissonRegressor]:
@@ -67,7 +66,7 @@ def get_components_linear(h, foreground, background, Imap_inv=None):
 
 
 
-def get_components_ebm(h, foreground, background, Imap_inv=None, anchored=True):
+def get_components_ebm(h, foreground, background, features, anchored=True):
     """
     Compute the Interventional Decomposition of an Explainable Boosting Machine (EBM)
 
@@ -79,9 +78,8 @@ def get_components_ebm(h, foreground, background, Imap_inv=None, anchored=True):
         The data points at which to evaluate the decomposition.
     background : (Nb, d) np.ndarray
         The data points at which to anchor the decomposition.
-    Imap_inv : List(List(int)), default=None
-        A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
-        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature.
+    features : Features
+        A Features object that represents which columns of X are treated as groups.
     anchored : bool, default=True
         Flag to compute anchored decompositions or interventional decompositions. If anchored, a 
         component is (Nf, Nb). If interventional, a component is (Nf,).
@@ -99,6 +97,7 @@ def get_components_ebm(h, foreground, background, Imap_inv=None, anchored=True):
     EBM = [ExplainableBoostingRegressor, ExplainableBoostingClassifier]
 
     # Setup
+    Imap_inv = features.Imap_inv
     h, foreground, background, Imap_inv = setup_linear(h, foreground, background, Imap_inv, EBM)
     X = np.vstack((background, foreground))
     Nf = foreground.shape[0]
@@ -254,7 +253,7 @@ def _get_anchored_components_u(decomposition, h, key, Imap_inv, x_idxs, foregrou
 
 
 
-def get_components_brute_force(h, foreground, background, Imap_inv=None, interactions=1, anchored=True, show_bar=False):
+def get_components_brute_force(h, foreground, background, features, interactions=1, anchored=True, show_bar=False):
     """
     Compute the Anchored/Interventional Decomposition of any black box
 
@@ -266,9 +265,8 @@ def get_components_brute_force(h, foreground, background, Imap_inv=None, interac
         The data points at which to evaluate the decomposition.
     background : (Nb, d) np.ndarray
         The data points at which to anchor the decomposition.
-    Imap_inv : List(List(int)), default=None
-        A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
-        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature.
+    features : Features
+        A Features object that represents which columns of X are treated as groups.
     interactions : int, List(Tuple(int)), default=1
         The highest level of interactions to consider. If it is a list of tuples, then we compute all
         specified components in `interactions`.
@@ -286,6 +284,7 @@ def get_components_brute_force(h, foreground, background, Imap_inv=None, interac
     """
     
     # Setup
+    Imap_inv = features.Imap_inv
     foreground, Imap_inv, iterator_ = setup_brute_force(foreground, background, Imap_inv, interactions, show_bar)
     N_eval = foreground.shape[0]
     N_ref = background.shape[0]
@@ -332,7 +331,7 @@ def get_components_brute_force(h, foreground, background, Imap_inv=None, interac
 
 
 
-def get_components_adaptive(h, background, Imap_inv=None, tolerance=0.05, show_bar=False, precompute=None):
+def get_components_adaptive(h, background, features, tolerance=0.05, show_bar=False, precompute=None):
     """
     Compute the Anchored/Interventional Decomposition of any black box by iteratively exploring
     the lattice space of feature interactions. This function assumes that foreground=background
@@ -344,9 +343,8 @@ def get_components_adaptive(h, background, Imap_inv=None, tolerance=0.05, show_b
         A callable black box `h(X)`.
     background : (Nb, d) np.ndarray
         The data points at which to anchor and evaluate the decomposition
-    Imap_inv : List(List(int)), default=None
-        A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
-        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature
+    features : Features
+        A Features object that represents which columns of X are treated as groups.
     interactions : int, List(Tuple(int)), default=1
         The highest level of interactions to consider. If it is a list of tuples, then we compute all
         specified components in `interactions`.
@@ -365,13 +363,14 @@ def get_components_adaptive(h, background, Imap_inv=None, tolerance=0.05, show_b
     """
     
     # Setup
+    Imap_inv = features.Imap_inv
     Imap_inv, D, is_fullpartition = check_Imap_inv(Imap_inv, background.shape[1])
     assert is_fullpartition, "In adaptive, Imap_inv must be a partition of the input columns"
     N = background.shape[0]
 
     # Compute the additive decomposition if it is not precomputed
     if precompute is None:
-        decomposition = get_components_brute_force(h, background, background, Imap_inv, show_bar=show_bar)
+        decomposition = get_components_brute_force(h, background, background, features, show_bar=show_bar)
     else:
         assert () in precompute.keys()
         assert precompute[()].shape == (N,)
@@ -438,7 +437,7 @@ def get_components_adaptive(h, background, Imap_inv=None, tolerance=0.05, show_b
 
 
 
-def get_components_tree(model, foreground, background, Imap_inv=None, anchored=False, algorithm='recurse'):
+def get_components_tree(model, foreground, background, features, anchored=False, algorithm='recurse'):
     """ 
     Compute the Anchored/Interventional Decomposition of a tree ensemble 
     (e.g. Random Forest and Gradient Boosted Trees).
@@ -452,9 +451,8 @@ def get_components_tree(model, foreground, background, Imap_inv=None, anchored=F
         The data points at which to evaluate the decomposition
     background : (Nb, d) np.ndarray
         The data points at which to anchor the decomposition
-    Imap_inv : List(List(int)), default=None
-        A list of groups that represent a single feature. For instance `[[0, 1], [2]]` will treat
-        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature.
+    features : Features
+        A Features object that represents which columns of X are treated as groups.
     anchored : bool, default=True
         Flag to compute anchored decompositions or interventional decompositions. If anchored, a 
         component is (Nf, Nb). If interventional, a component is (Nf,).
@@ -475,6 +473,7 @@ def get_components_tree(model, foreground, background, Imap_inv=None, anchored=F
         raise Exception("Anchored decompositions are only supported by the `recurse` algorithm")
     
     # Setup
+    Imap_inv = features.Imap_inv
     Imap_inv, D, is_full_partition = check_Imap_inv(Imap_inv, background.shape[1])
     # We complete the partition with a `fake` feature if necessary
     if not is_full_partition:
