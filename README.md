@@ -1,6 +1,9 @@
-# PyFD : Functional Decomposition in Python
 
-## Installation
+<p align="center">
+  <img src="./docs/Images/Header_PyFD.png" width="800" />
+</p>
+
+# Installation
 
 To install this package clone the repository and run
 
