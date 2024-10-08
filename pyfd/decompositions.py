@@ -805,8 +805,7 @@ def get_CoE(decomposition, anchored=True, foreground_preds=None):
 
 def get_interventional_from_anchored(decomposition):
     """
-    Transform an anchored decomposition into an interventional one to
-    save memory.
+    Transform an anchored decomposition into an interventional one to save memory.
     
     Parameters
     ----------
