@@ -10,12 +10,13 @@ from .decompositions import get_interventional_from_anchored
 from .fd_trees import GADGET_PDP, PDP_PFI_Tree
 
 
-def setup_pyplot_font(size=11):
+def setup_pyplot_font(size=11, use_latex=False):
     from matplotlib import rc
     rc('font',**{'family':'serif', 'serif':['Computer Modern Roman'], 'size':size})
-    rc('text', usetex=True)
-    from matplotlib import rcParams
-    rcParams["text.latex.preamble"] = r"\usepackage{bm}\usepackage{amsfonts}"
+    if use_latex:
+        rc('text', usetex=True)
+        from matplotlib import rcParams
+        rcParams["text.latex.preamble"] = r"\usepackage{bm}\usepackage{amsfonts}"
 
 
 
@@ -151,20 +152,19 @@ def bar(phis, feature_labels, threshold=None, xerr=None, absolute=False, ax=None
     
     if ax is None:
         plt.figure()
-        # plt.gcf().set_size_inches(16, 10)
         ax = plt.gca()
-    
+
     # Draw a line for the origin when necessary
     negative_phis = (phis < 0).any() and not absolute
     if negative_phis:
         ax.axvline(0, 0, 1, color="k", linestyle="-", linewidth=1, zorder=1)
-    
+
     # Show the treshold of significant amplitude
     if threshold:
         ax.axvline(threshold, 0, 1, color="k", linestyle="--", linewidth=2, zorder=1)
         if negative_phis:
             ax.axvline(-threshold, 0, 1, color="k", linestyle="--", linewidth=2, zorder=1)
-    
+
     # draw the bars
     bar_width = 0.7 / stacked_bars
     shift = [0] * stacked_bars
@@ -174,7 +174,7 @@ def bar(phis, feature_labels, threshold=None, xerr=None, absolute=False, ax=None
     else:
         shift =  [ (i+1)*bar_width for i in range(stacked_bars//2)[::-1]] + [0]\
                 +[-(i+1)*bar_width for i in range(stacked_bars//2)]
-    
+
     # Get DEEL colors
     if color is None:
         colors = deepcopy(color_dict["DEEL"])
@@ -184,19 +184,19 @@ def bar(phis, feature_labels, threshold=None, xerr=None, absolute=False, ax=None
         colors = {}
         colors['pos'] = color
         colors['neg'] = color
-    
+
     # Plot the bars with err
     for s in range(stacked_bars):
         # Error bars
         if xerr is not None:
-            error_bar = xerr[s][ :,  ordered_features]
+            error_bar = xerr[s][:, ordered_features]
         else:
             error_bar = None
         ax.barh(
             y_pos + shift[s], bar_mapper(phis[s, ordered_features]),
             bar_width, xerr=error_bar, align='center',
-            color=[colors['neg'] if phis[s, ordered_features[j]] <= 0 
-                    else colors['pos'] for j in range(len(y_pos))], 
+            color=[colors['neg'] if phis[s, ordered_features[j]] <= 0
+                    else colors['pos'] for j in range(len(y_pos))],
             edgecolor=(0.88,0.89,0.92), capsize=5, alpha=1-0.75/stacked_bars*s)
 
     # Set the y-ticks and labels
@@ -221,12 +221,12 @@ def bar(phis, feature_labels, threshold=None, xerr=None, absolute=False, ax=None
 
     xmin,xmax = ax.get_xlim()
     ax.set_ylim(-0.5, n_features-0.5)
-    
+
     if negative_phis:
         ax.set_xlim(xmin - (xmax-xmin)*0.05, xmax + (xmax-xmin)*0.05)
     else:
         ax.set_xlim(xmin, xmax + (xmax-xmin)*0.05)
-    
+
     plt.gcf().tight_layout()
 
 
