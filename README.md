@@ -32,12 +32,12 @@ notably [Partial Dependence Plots (PDP)](https://scikit-learn.org/stable/modules
 
 The motivation behind the `PyFD` package was to realize that these various explanability methods can be unified
 through the lens of **Functional Decomposition** ([Our Paper](https://proceedings.mlr.press/v238/laberge24a.html)).
-More specifically, let $\mathcal{B}$ be a probability distribution over the input space. Then the model $h$ can
+More specifically, let $B$ be a probability distribution over the input space. Then the model $h$ can
 be decomposed as follows
 
-$$ h(x) = \mathbb{E}_{z\sim \mathcal{B}}[h(z)] + \sum_i h_{i,\mathcal{B}}(x_i) + \sum_{i<j} h_{ij,\mathcal{B}}(x_{ij}) + \ldots,$$
+$$ h(x) = E_{z\sim B}[h(z)] + \sum_i h_{i,B}(x_i) + \sum_{i<j} h_{ij,B}(x_{ij}) + \ldots,$$
 
-where $h_{i, \mathcal{B}}(x_i)$ are called the *main effects* and only depend on a single feature. The remaining terms $h_{u,\mathcal{B}}(x_u)$ with
+where $h_{i, B}(x_i)$ are called the *main effects* and only depend on a single feature. The remaining terms $h_{u,B}(x_u)$ with
 $|u|\geq 2$ are called *interactions* and depend on multiple features simultaneously. The PDP/SHAP/PFI explainers can all be expressed in 
 terms of this fonctional decomposition.
 
@@ -118,7 +118,7 @@ tree.print()
 ```
 
 The FD-Tree has decided to partition the input space into four regions based on the `workingday` and `hr` features. We can now compute functional decomposition
-while restricting the distribution $\mathcal{B}$ to each distinct region.
+while restricting the distribution $B$ to each distinct region.
 
 ```python
 # Assign each datum to its region
