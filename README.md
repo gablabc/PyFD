@@ -35,7 +35,7 @@ through the lens of **Functional Decomposition** ([Our Paper](https://proceeding
 More specifically, let $B$ be a probability distribution over the input space. Then the model $h$ can
 be decomposed as follows
 
-$$ h(x) = E_{z\sim B}[h(z)] + \sum_i h_{i,B}(x_i) + \sum_{i<j} h_{ij,B}(x_{ij}) + \ldots,$$
+$$ h(x) = E_{z\sim B}[h(z)] + \sum_i h_{i,B}(x_i) + \sum_{i\lt j} h_{ij,B}(x_{ij}) + \ldots,$$
 
 where $h_{i, B}(x_i)$ are called the *main effects* and only depend on a single feature. The remaining terms $h_{u,B}(x_u)$ with
 $|u|\geq 2$ are called *interactions* and depend on multiple features simultaneously. The PDP/SHAP/PFI explainers can all be expressed in 
@@ -152,7 +152,7 @@ plot_legend(rules)
 
 <img src="./docs/Images/bike_attrib_regional.png" width="900">
 
-<img src="./docs/Images/legend.png" width="300">
+<img src="./docs/Images/legend.png" width="900">
 
 ```python
 fig, axes = plt.subplots(1, 4)
