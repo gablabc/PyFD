@@ -41,7 +41,9 @@ where $h_{i, B}(x_i)$ are called the *main effects* and only depend on a single 
 $|u|\geq 2$ are called *interactions* and depend on multiple features simultaneously. The PDP/SHAP/PFI explainers can all be expressed in 
 terms of this fonctional decomposition.
 
-<img src="./docs/Images/unification.png" width="500">
+<p align="center">
+  <img src="./docs/Images/unification.png" width="500">
+</p>
 
 This has important practical implications : any package that can efficiently compute this functional decomposition can compute **any** 
 explanation method. This is why `PyFD` exists.
@@ -81,7 +83,9 @@ I_SHAP = get_SHAP_importance(shap_values)
 bar([I_PFI, I_SHAP, I_PDP], features.names())
 ```
 
-<img src="./docs/Images/bike_imp.png" width="400">
+<p align="center">
+  <img src="./docs/Images/bike_imp.png" width="400">
+</p>
 
 # Increasing Explanation Alignment
 
