@@ -1,5 +1,4 @@
 *.pdf
-*.png
 *.csv
 *.pyc
 *.joblib
@@ -8,7 +7,6 @@
 pyfd.egg-info/
 *.so
 *.o
-docs/*
 build/*
 tutorials/models/*
 tutorials/Images/*
