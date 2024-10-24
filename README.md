@@ -3,7 +3,7 @@
   <img src="./docs/Images/Header_PyFD.png" width="800" />
 </p>
 
-# Installation
+# 🛠️ Installation
 
 To install this package clone the repository and run
 
@@ -12,7 +12,7 @@ cd PyFD/
 python3 -m pip install .
 ```
 
-# Unification of Additive Explanations
+# 🔍 Unification of Additive Explanations
 
 The typical Machine Learning methodology is as follows
 ```python
@@ -32,14 +32,13 @@ notably [Partial Dependence Plots (PDP)](https://scikit-learn.org/stable/modules
 
 The motivation behind the `PyFD` package was to realize that these various explanability methods can be unified
 through the lens of **Functional Decomposition** ([Our Paper](https://proceedings.mlr.press/v238/laberge24a.html)).
-More specifically, let $B$ be a probability distribution over the input space. Then the model $h$ can
-be decomposed as follows
+More specifically, let $B$ be a probability distribution over the input space. Then the model $h$ can be decomposed as follows
 
 $$ h(x) = E_{z\sim B}[h(z)] + \sum_i h_{i,B}(x_i) + \sum_{i\lt j} h_{ij,B}(x_{ij}) + \ldots,$$
 
 where $h_{i, B}(x_i)$ are called the *main effects* and only depend on a single feature. The remaining terms $h_{u,B}(x_u)$ with
 $|u|\geq 2$ are called *interactions* and depend on multiple features simultaneously. The PDP/SHAP/PFI explainers can all be expressed in 
-terms of this fonctional decomposition.
+terms of this functional decomposition.
 
 <p align="center">
   <img src="./docs/Images/unification.png" width="500">
@@ -87,7 +86,7 @@ bar([I_PFI, I_SHAP, I_PDP], features.names())
   <img src="./docs/Images/bike_imp.png" width="400">
 </p>
 
-# Increasing Explanation Alignment
+# 📏 Increasing Explanation Alignment
 
 In the bar chart shown previously, the three methods attributed very different importance to the feature `workingday`. This is problematic because there is no
 **ground-truth** for the optimal explanations and so practitionners are left wondering *which explanation should I believe?* In `PyFD` we do not shy away 
@@ -171,4 +170,7 @@ for r in range(4):
 
 As a result of partioning the input space, there is almost perfect agreement between the PDP/SHAP/PFI feature importance. We no longer have to wonder 
 which explanation is the correct one since they all agree!
+
+# 🧠 Tutorials
+The `PyFD` is explained in-depth [here](https://github.com/gablabc/PyFD/tree/master/tutorials) in a series of jupyter notebooks.
 
