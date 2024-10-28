@@ -15,7 +15,7 @@ The fundamental goal of `PyFD` is to compute faithful explanations for the predi
 should look like when investigating general models. Consequently, we argue that it is best to first investigate models that can be faithfully explained : **Additive Models**. 
 This series of tutorials show how to fit and interpret additive models. 
 
-**TODO**
+- [2-1-Explain-Additive-Models](https://github.com/gablabc/PyFD/blob/master/tutorials/2-1-Explain-Additive-Models.ipynb) discusses how to explain the predictions of linear models, which are the simplest form of additive models.
 
 ## 3 Explaining General Models 
 Once we agree on how additive models should be explained, we can generalize said definitions to more general models by leveraging the theory of **Functional Decomposition**. 
