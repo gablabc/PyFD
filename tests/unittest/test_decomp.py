@@ -7,6 +7,7 @@ from shap.maskers import Independent
 
 from pyfd.decompositions import get_components_brute_force, get_components_adaptive
 from pyfd.decompositions import get_CoE, get_interventional_from_anchored
+from pyfd.decompositions import get_regional_decompositions
 from pyfd.shapley import lattice_shap
 from pyfd.features import Features
 
@@ -173,13 +174,25 @@ def test_components_utils(discrete):
     decomp_interv = get_interventional_from_anchored(decomp_anchored)
     assert np.isclose(decomp_anchored[()], decomp_interv[()]).all()
     assert decomp_interv[(0,)].shape == (N,)
-    
-    # Compute the Cost of Exclusion
-    coe_anchored = get_CoE(decomp_anchored, anchored=True)
-    coe_interv = get_CoE(decomp_interv, anchored=False)
+    assert decomp_anchored.keys() == decomp_interv.keys()
 
+    # Compute the Cost of Exclusion
+    coe_anchored = get_CoE(decomp_anchored)
+    coe_interv = get_CoE(decomp_interv)
     assert np.isclose(coe_anchored, coe_interv)
 
+    # Compute the Cost of Exclusion while passing foreground_preds
+    foreground_preds = h(X)
+    assert np.isclose(coe_anchored, get_CoE(decomp_anchored, foreground_preds))
+    assert np.isclose(coe_interv, get_CoE(decomp_interv, foreground_preds))
+
+    # Regional CoE
+    regions = (X[:, 0] > 0).astype(int)
+    regional_decompositions = get_regional_decompositions(decomp_anchored, regions, regions, 2)
+    print(regional_decompositions)
+    coe_regional = get_CoE(regional_decompositions)
+    coe_regional_ = get_CoE(regional_decompositions, [foreground_preds[regions==0], foreground_preds[regions==1]])
+    assert np.isclose(coe_regional, coe_regional_)
 
 
 if __name__ == "__main__":
