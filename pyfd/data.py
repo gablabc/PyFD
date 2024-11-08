@@ -739,7 +739,7 @@ def get_data_kaggle_housing(remove_correlations=False, submission=False):
     else:
         df = df[feature_names+['SalePrice']]
         X = df.to_numpy()[:, :-1]
-        y = np.log(df.to_numpy()[:, [-1]])
+        y = np.log(df.to_numpy()[:, -1])
     
     features = Features(X, feature_names, feature_types)
     if submission:
