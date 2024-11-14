@@ -168,7 +168,10 @@ def get_Imap_inv_from_pipeline(Imap_inv, pipeline):
                     elif type(transformer[1]) == OneHotEncoder:
                         # Iterate over all columns the transformer acts upon
                         for idx, i in enumerate(transformer[2]):
-                            n_categories = len(transformer[1].categories_[idx])
+                            # Categories can be dropped by the the OHE
+                            dropped_category = int(transformer[1].drop_idx_ is not None and
+                                                     transformer[1].drop_idx_[idx] is not None)
+                            n_categories = len(transformer[1].categories_[idx]) - dropped_category
                             Imap_inv_layer[i] = list(range(curr_idx, curr_idx+n_categories))
                             curr_idx += n_categories
                     # BinsDiscretizer maps a column to n_bins columns

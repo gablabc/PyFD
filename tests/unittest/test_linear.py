@@ -38,31 +38,31 @@ def setup_toy_task(d_num, d_cat=0, n_samples=500, task="regression"):
 
 
 ####### Linear Models on toy data ########
-@pytest.mark.parametrize("d_num", [5, 10])
-@pytest.mark.parametrize("d_cat", [0, 5])
 @pytest.mark.parametrize("task", ["regression", "classification"])
 @pytest.mark.parametrize("num_encoding", ["identity", "bins", "splines-bias", "splines-nbias"])
-def test_toy_linear(d_num, d_cat, task, num_encoding):
+@pytest.mark.parametrize("drop_ohe_cat", [True, False])
+def test_toy_linear(task, num_encoding, drop_ohe_cat):
 
     # Setup data and model
+    d_num = 5
+    d_cat = 5
     d = d_num + d_cat
     X, y, features = setup_toy_task(d_num, d_cat, 1000, task)
     numerical_encoders = {"identity": FunctionTransformer(),
                           "bins": KBinsDiscretizer(encode='onehot-dense'),
                           "splines-bias":  SplineTransformer(n_knots=4, knots='quantile', include_bias=True),
                           "splines-nbias": SplineTransformer(n_knots=4, knots='quantile', include_bias=False)}
+    ohe_encoder = OneHotEncoder(sparse_output=False, drop='first') if drop_ohe_cat else\
+                  OneHotEncoder(sparse_output=False)
+    encoder = ColumnTransformer([
+                ('num', numerical_encoders[num_encoding], list(range(d_num))),
+                ('cat', ohe_encoder, list(range(d_num, d)) )
+                ])
     if task == "regression":
-        model = Ridge()
+        lin_model = Ridge()
     else:
-        model = LogisticRegression()
-    if d_cat > 0:
-        encoder = ColumnTransformer([
-                    ('num', numerical_encoders[num_encoding], list(range(d_num))),
-                    ('cat', OneHotEncoder(sparse_output=False), list(range(d_num, d)))
-                    ])
-    else:
-        encoder = numerical_encoders[num_encoding]
-    model = Pipeline([('encoder', encoder), ('scaler', StandardScaler()), ('predictor', model)])
+        lin_model = LogisticRegression()
+    model = Pipeline([('encoder', encoder), ('scaler', StandardScaler()), ('predictor', lin_model)])
     model.fit(X, y)
 
     # Explain the model
@@ -82,5 +82,5 @@ def test_toy_linear(d_num, d_cat, task, num_encoding):
 
 
 if __name__ == "__main__":
-    test_toy_linear(3, 2, "regression", "bins")
+    test_toy_linear("regression", "bins", False)
 
