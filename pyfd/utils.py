@@ -135,7 +135,7 @@ def get_Imap_inv_from_pipeline(Imap_inv, pipeline):
     # Iterate over the whole pipeline
     for layer in pipeline:
         # Only certain layers are supported, other layers are assumed to be ``passthrough''
-        if type(layer) in ADDITIVE_TRANSFORMS or type(layer) == ColumnTransformer:
+        if type(layer) in ADDITIVE_TRANSFORMS + [ColumnTransformer]:
 
             # Compute the list of transformers and the columns they act on
             if type(layer) in [SplineTransformer, OneHotEncoder]:
@@ -152,41 +152,42 @@ def get_Imap_inv_from_pipeline(Imap_inv, pipeline):
             if transformers is not None:
                 # We compute the Imap_inv relative to this layer
                 Imap_inv_layer = [[] for _ in range(layer.n_features_in_)]
-
+                # This idx is incremented as we iterate through column transformers
                 curr_idx = 0
                 for transformer in transformers:
-                    # Splines maps a column to dim columns
+                    # By default we assume that each input maps to a single column
+                    n_inputs = len(transformer[2])
+                    dim = [1] * n_inputs
+
+                    # Splines maps an input to dim columns
                     if type(transformer[1]) == SplineTransformer:            
                         degree = transformer[1].degree
                         n_knots = transformer[1].n_knots
-                        dim = n_knots + degree - 2 + int(transformer[1].include_bias)
-                        # Iterate over all columns the transformer acts upon
-                        for i in transformer[2]:
-                            Imap_inv_layer[i] = list(range(curr_idx, curr_idx+dim))
-                            curr_idx += dim
+                        dim = [n_knots + degree - 2 + int(transformer[1].include_bias)] * n_inputs
                     # OHE maps a column to n_categories columns
                     elif type(transformer[1]) == OneHotEncoder:
                         # Iterate over all columns the transformer acts upon
-                        for idx, i in enumerate(transformer[2]):
+                        for i in range(n_inputs):
                             # Categories can be dropped by the the OHE
                             dropped_category = int(transformer[1].drop_idx_ is not None and
-                                                     transformer[1].drop_idx_[idx] is not None)
-                            n_categories = len(transformer[1].categories_[idx]) - dropped_category
-                            Imap_inv_layer[i] = list(range(curr_idx, curr_idx+n_categories))
-                            curr_idx += n_categories
+                                                     transformer[1].drop_idx_[i] is not None)
+                            dim[i] = len(transformer[1].categories_[i]) - dropped_category
                     # BinsDiscretizer maps a column to n_bins columns
-                    elif type(transformer[1]) == KBinsDiscretizer and \
-                            transformer[1].encode in ['onehot', 'onehot-dense']:
+                    elif type(transformer[1]) == KBinsDiscretizer and transformer[1].encode in ['onehot', 'onehot-dense']:
+                        for i in range(n_inputs):
+                            dim[i] = transformer[1].n_bins_[i]
+                    # Pipeline requires a recusive call
+                    elif type(transformer[1]) == Pipeline:
+                        # Recursive call
+                        Imap_inv_temp = get_Imap_inv_from_pipeline([[i] for i in range(n_inputs)], transformer[1])
                         # Iterate over all columns the transformer acts upon
-                        for idx, i in enumerate(transformer[2]):
-                            n_bins = transformer[1].n_bins_[idx]
-                            Imap_inv_layer[i] = list(range(curr_idx, curr_idx+n_bins))
-                            curr_idx += n_bins
-                    # Other transformers map a column to a column
-                    else:
-                        for i in transformer[2]:
-                            Imap_inv_layer[i] = [curr_idx]
-                            curr_idx += 1
+                        for i in range(n_inputs):
+                            dim[i] = len(Imap_inv_temp[i])
+
+                    # Having set the `dim` list, we can update the Imap_inv of the layer
+                    for i, input_idx in enumerate(transformer[2]):
+                        Imap_inv_layer[input_idx] = list(range(curr_idx, curr_idx+dim[i]))
+                        curr_idx += dim[i]
 
                 # We map Imap_inv through the Imap_inv_layer
                 for i, group in enumerate(Imap_inv_copy):

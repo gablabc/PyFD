@@ -48,15 +48,24 @@ def test_toy_linear(task, num_encoding, drop_ohe_cat):
     d_cat = 5
     d = d_num + d_cat
     X, y, features = setup_toy_task(d_num, d_cat, 1000, task)
-    numerical_encoders = {"identity": FunctionTransformer(),
-                          "bins": KBinsDiscretizer(encode='onehot-dense'),
-                          "splines-bias":  SplineTransformer(n_knots=4, knots='quantile', include_bias=True),
-                          "splines-nbias": SplineTransformer(n_knots=4, knots='quantile', include_bias=False)}
+    # Encoding numerical features
+    if num_encoding == "identity": 
+        numerical_encoder = FunctionTransformer()
+    elif num_encoding == "bins": 
+        if drop_ohe_cat:
+            numerical_encoder = Pipeline([('discretizer', KBinsDiscretizer(encode='ordinal')),
+                                          ('ohe', OneHotEncoder(drop='first'))])
+        else:
+            numerical_encoder = KBinsDiscretizer(encode='onehot-dense')
+    elif num_encoding == "splines-bias": 
+        numerical_encoder = SplineTransformer(n_knots=4, knots='quantile', include_bias=True)
+    elif num_encoding == "splines-nbias": 
+        numerical_encoder = SplineTransformer(n_knots=4, knots='quantile', include_bias=False)
+    # Encoding categorical features
     ohe_encoder = OneHotEncoder(sparse_output=False, drop='first') if drop_ohe_cat else\
                   OneHotEncoder(sparse_output=False)
     encoder = ColumnTransformer([
-                ('num', numerical_encoders[num_encoding], list(range(d_num))),
-                ('cat', ohe_encoder, list(range(d_num, d)) )
+                ('num', numerical_encoder, list(range(d_num))), ('cat', ohe_encoder, list(range(d_num, d)) )
                 ])
     if task == "regression":
         lin_model = Ridge()
@@ -82,5 +91,5 @@ def test_toy_linear(task, num_encoding, drop_ohe_cat):
 
 
 if __name__ == "__main__":
-    test_toy_linear("regression", "bins", False)
+    test_toy_linear("regression", "bins", True)
 
