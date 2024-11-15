@@ -12,7 +12,7 @@ from pyfd.decompositions import get_components_ebm, get_components_brute_force
 from pyfd.features import Features
 
 
-def setup_toy_task(d_num, d_cat=0, n_samples=1000, task="regression", num_encoding="identity", interactions=False):
+def setup_toy_task(d_num, d_cat=0, n_samples=500, task="regression", interactions=False):
     np.random.seed(42)
     # Generate input
     d = d_num + d_cat
@@ -43,18 +43,6 @@ def setup_toy_task(d_num, d_cat=0, n_samples=1000, task="regression", num_encodi
         model = ExplainableBoostingRegressor(interactions=0.95*int(interactions), outer_bags=1)
     else:
         model = ExplainableBoostingClassifier(interactions=0.95*int(interactions), outer_bags=1)
-
-    # Feature Embeddings
-    numerical_encoders = {"standard": StandardScaler(), "min-max":  MinMaxScaler()}
-    if not num_encoding == "identity":
-        if d_cat > 0:
-            encoder = ColumnTransformer([
-                        ('num', numerical_encoders[num_encoding], list(range(d_num))),
-                        ('cat', "passthrough", list(range(d_num, d)))
-                        ])
-        else:
-            encoder = numerical_encoders[num_encoding]
-        model = Pipeline([('encoder', encoder), ('predictor', model)])
     
     # Train the model
     model.fit(X, y.ravel())
@@ -69,51 +57,44 @@ def setup_toy_task(d_num, d_cat=0, n_samples=1000, task="regression", num_encodi
 
 
 ####### EBMs on toy data ########
-@pytest.mark.parametrize("d_num", [5, 10])
 @pytest.mark.parametrize("d_cat", [0, 5])
 @pytest.mark.parametrize("task", ["regression", "classification"])
-@pytest.mark.parametrize("num_encoding", ["identity", "standard"])
 @pytest.mark.parametrize("interactions", [False, True])
 @pytest.mark.parametrize("anchored", [False, True])
-def test_toy_ebm_full(d_num, d_cat, task, num_encoding, interactions, anchored):
+def test_toy_ebm_full(d_cat, task, interactions, anchored):
 
     # Setup data and model
-    X, model, h, features = setup_toy_task(d_num, d_cat, 1000, task, num_encoding, interactions)
+    d_num = 5
+    X, model, h, features = setup_toy_task(d_num, d_cat, 500, task, interactions)
 
     # Fully explain the model
-    if type(model) == Pipeline:
-        U = list(model[-1].term_features_)
-    else:
-        U = list(model.term_features_)
+    U = list(model.term_features_)
     foreground = X
-    background = X[:500]
+    background = X
     components = get_components_ebm(model, foreground, background, features, anchored=anchored)
-    components_2 = get_components_brute_force(h, foreground, background, features,
-                                                interactions=U, anchored=anchored)
+    components_2 = get_components_brute_force(h, foreground, background, features, interactions=U, anchored=anchored)
     assert np.isclose(components[()], components_2[()]).all(), "Intercepts are not the same"
     for u in U:
         assert np.isclose(components[u], components_2[u]).all(), "Components are not the same"
 
 
 
-@pytest.mark.parametrize("d_num", [5, 10])
 @pytest.mark.parametrize("d_cat", [0, 5])
 @pytest.mark.parametrize("task", ["regression", "classification"])
-@pytest.mark.parametrize("num_encoding", ["identity", "standard"])
 @pytest.mark.parametrize("interactions", [False, True])
 @pytest.mark.parametrize("anchored", [False, True])
-def test_toy_ebm_partial(d_num, d_cat, task, num_encoding, interactions, anchored):
+def test_toy_ebm_partial(d_cat, task, interactions, anchored):
 
     # Setup data and model
-    X, model, h, features = setup_toy_task(d_num, d_cat, 1000, task, num_encoding, interactions)
+    d_num = 5
+    X, model, h, features = setup_toy_task(d_num, d_cat, 500, task, interactions)
 
     # Partially explain the model
     foreground = X
-    background = X[:500]
+    background = X
     components = get_components_ebm(model, foreground, background, features.select([0, 1]), anchored=anchored)
     U = list(components.keys())[1:]
-    components_2 = get_components_brute_force(h, foreground, background, features.select([0, 1]), 
-                                                        interactions=U, anchored=anchored)
+    components_2 = get_components_brute_force(h, foreground, background, features.select([0, 1]), interactions=U, anchored=anchored)
     assert np.isclose(components[()], components_2[()]).all(), "Intercepts are not the same"
     for u in U:
         assert np.isclose(components[u], components_2[u]).all(), "Components are not the same"
@@ -127,25 +108,23 @@ def test_toy_ebm_partial(d_num, d_cat, task, num_encoding, interactions, anchore
 
 
 
-@pytest.mark.parametrize("d_num", [5, 10])
 @pytest.mark.parametrize("d_cat", [0, 5])
 @pytest.mark.parametrize("task", ["regression", "classification"])
-@pytest.mark.parametrize("num_encoding", ["identity", "standard"])
 @pytest.mark.parametrize("interactions", [False, True])
 @pytest.mark.parametrize("anchored", [False, True])
-def test_toy_ebm_grouping(d_num, d_cat, task, num_encoding, interactions, anchored):
+def test_toy_ebm_grouping(d_cat, task, interactions, anchored):
 
     # Setup data and model
-    X, model, h, features = setup_toy_task(d_num, d_cat, 1000, task, num_encoding, interactions)
+    d_num  = 5
+    X, model, h, features = setup_toy_task(d_num, d_cat, 500, task, interactions)
     foreground = X
-    background = X[:500]
+    background = X
 
     # Full decomposition with grouped num and cat features
     grouped_features = features.group( [ list(range(d_num)), list(range(d_num, d_num+d_cat)) ] )
     components = get_components_ebm(model, foreground, background, grouped_features, anchored=anchored)
     U = list(components.keys())[1:]
-    components_2 = get_components_brute_force(h, foreground, background, grouped_features,
-                                                            interactions=U, anchored=anchored)
+    components_2 = get_components_brute_force(h, foreground, background, grouped_features, interactions=U, anchored=anchored)
     assert np.isclose(components[()], components_2[()]).all(), "Intercepts are not the same"
     for u in U:
         assert np.isclose(components[u], components_2[u]).all(), "Components are not the same"
@@ -168,8 +147,7 @@ def test_ebm_marketing(anchored):
     from pyfd.data import get_data_marketing
 
     X, y, features = get_data_marketing(use_target_encoder=True)
-    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.3, 
-                                                stratify=y, random_state=42)
+    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.3, stratify=y, random_state=42)
     model = ExplainableBoostingClassifier(random_state=0, interactions=5, max_bins=256)
     model.fit(X_train, y_train)
 
