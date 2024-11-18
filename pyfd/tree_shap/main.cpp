@@ -4,7 +4,7 @@
 // #include "stack_treeshap.hpp"
 #include "leaf_treeshap.hpp"
 #include "waterfall_treeshap.hpp"
-
+#include "utils.hpp"
 
 
 ////// Wrapping the C++ functions with a C interface //////
@@ -94,6 +94,8 @@ int main_recurse_treeshap(int Nx, int Nz, int Nt, int d, int depth, double* fore
     std::cout << std::endl;
     free_image(&image);
     free(phi);
+
+    return 0;
 }
 
 
