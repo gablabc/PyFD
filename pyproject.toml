@@ -14,7 +14,7 @@ dependencies = [
   'graphviz',
   'numpy',
   'matplotlib',
-  'scikit-learn',
+  'scikit-learn>=1.0',
   'pandas',
   'tqdm>=4.27.0',
   'shap',
