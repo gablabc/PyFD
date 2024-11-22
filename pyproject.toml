@@ -25,7 +25,10 @@ dynamic = ["version"]
 
 
 [tool.setuptools]
-packages = ["pyfd"]
+packages = [
+  "pyfd",
+  "pyfd.tree_shap"
+]
 
 [tool.setuptools.dynamic]
 version = {attr = "pyfd.__version__"}
