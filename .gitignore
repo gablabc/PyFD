@@ -10,3 +10,4 @@ pyfd.egg-info/
 build/*
 tutorials/models/*
 tutorials/Images/*
+pyfd/cached_data

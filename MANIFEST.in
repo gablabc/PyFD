@@ -1,10 +1,2 @@
 # Control which files are also included in the package
 
-include pyfd/datasets/Bike-Sharing/*.csv
-include pyfd/datasets/COMPAS/*.csv
-include pyfd/datasets/default_credit/*.csv
-include pyfd/datasets/kaggle_houses/*.csv
-include pyfd/datasets/kin8nm/*.csv
-include pyfd/datasets/marketing/*.csv
-include pyfd/datasets/Adult-Income/adult.data
-include pyfd/datasets/Adult-Income/adult.test
