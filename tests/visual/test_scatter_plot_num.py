@@ -37,53 +37,45 @@ features.summary()
 # Anchored Additive decomposition
 decomposition = get_components_brute_force(h, X, X, features)
 shap_values = permutation_shap(h, X, X, features)
-attrib_scatter_plot(decomposition, shap_values, foreground=X, 
-                    features=features, n_cols=5, figsize=(18, 4))
-plt.savefig(os.path.join("Images", "0_scatter_anchored_add.png"), bbox_inches="tight")
+attrib_scatter_plot(decomposition, shap_values, foreground=X, features=features, n_cols=5, figsize=(18, 4))
+plt.savefig(os.path.join("Images", "scatter_0_anchored_add.png"), bbox_inches="tight")
 
 # Full Anchored decomposition (PDPs should ignore non-additive keys)
 decomposition = get_components_adaptive(h, X, features, tolerance=1e-5)
 shap_values = shap_from_decomposition(decomposition)
-attrib_scatter_plot(decomposition, shap_values, X, 
-                    features=features, n_cols=5, figsize=(18, 4))
-plt.savefig(os.path.join("Images", "1_scatter_anchored_full.png"), bbox_inches="tight")
+attrib_scatter_plot(decomposition, shap_values, X, features=features, n_cols=5, figsize=(18, 4))
+plt.savefig(os.path.join("Images", "scatter_1_anchored_full.png"), bbox_inches="tight")
 
 # Interventional Additive decomposition
 decomposition = get_components_brute_force(h, X, X, features, anchored=False)
 shap_values = permutation_shap(h, X, X, features)
-attrib_scatter_plot(decomposition, shap_values, X, 
-                    features=features, n_cols=5, figsize=(18, 4))
-plt.savefig(os.path.join("Images", "2_scatter_interv_add.png"), bbox_inches="tight")
+attrib_scatter_plot(decomposition, shap_values, X, features=features, n_cols=5, figsize=(18, 4))
+plt.savefig(os.path.join("Images", "scatter_2_interv_add.png"), bbox_inches="tight")
 
 # Full Interventional decomposition (PDPs should ignore non-additive keys)
 decomposition = get_components_adaptive(h, X, features, tolerance=1e-5)
 decomposition = get_interventional_from_anchored(decomposition)
 shap_values = shap_from_decomposition(decomposition)
-attrib_scatter_plot(decomposition, shap_values, X, 
-                    features=features, n_cols=5, figsize=(18, 4))
-plt.savefig(os.path.join("Images", "3_scatter_interv_full.png"), bbox_inches="tight")
+attrib_scatter_plot(decomposition, shap_values, X, features=features, n_cols=5, figsize=(18, 4))
+plt.savefig(os.path.join("Images", "scatter_3_interv_full.png"), bbox_inches="tight")
 
 # Play with n_cols and idxs
 
 # Top - 3
-attrib_scatter_plot(decomposition, shap_values, X, idxs=3, 
-                    features=features, n_cols=5, figsize=(12, 4))
-plt.savefig(os.path.join("Images", "4_scatter_top_3.png"), bbox_inches="tight")
+attrib_scatter_plot(decomposition, shap_values, X, idxs=3, features=features, n_cols=5, figsize=(12, 4))
+plt.savefig(os.path.join("Images", "scatter_4_top_3.png"), bbox_inches="tight")
 
 # Go to the next row
-attrib_scatter_plot(decomposition, shap_values, X, idxs=3,
-                    features=features, n_cols=2, figsize=(8, 8))
-plt.savefig(os.path.join("Images", "5_scatter_top_3_next_row.png"), bbox_inches="tight")
+attrib_scatter_plot(decomposition, shap_values, X, idxs=3, features=features, n_cols=2, figsize=(8, 8))
+plt.savefig(os.path.join("Images", "scatter_5_top_3_next_row.png"), bbox_inches="tight")
 
 # Specific idxs
-attrib_scatter_plot(decomposition, shap_values, X, idxs=[0, 2, 4],
-                    features=features, n_cols=5, figsize=(12, 4))
-plt.savefig(os.path.join("Images", "6_scatter_idxs_024.png"), bbox_inches="tight")
+attrib_scatter_plot(decomposition, shap_values, X, idxs=[0, 2, 4], features=features, n_cols=5, figsize=(12, 4))
+plt.savefig(os.path.join("Images", "scatter_6_idxs_024.png"), bbox_inches="tight")
 
 # Go to the next row
-attrib_scatter_plot(decomposition, shap_values, X, idxs=[0, 2 ,4], 
-                    features=features, n_cols=2, figsize=(8, 8))
-plt.savefig(os.path.join("Images", "7_scatter_idxs_024_next_row.png"), bbox_inches="tight")
+attrib_scatter_plot(decomposition, shap_values, X, idxs=[0, 2 ,4], features=features, n_cols=2, figsize=(8, 8))
+plt.savefig(os.path.join("Images", "scatter_7_idxs_024_next_row.png"), bbox_inches="tight")
 
 
 ###################################################################
@@ -99,72 +91,62 @@ for r in range(2):
 regional_decompositions = [[], []]
 regional_shap = [[], []]
 for r in range(2):
-    regional_decompositions[r] = get_components_brute_force(h, regional_backgrounds[r], 
-                                                           regional_backgrounds[r], features)
-    regional_shap[r] = permutation_shap(h, regional_backgrounds[r], 
-                                        regional_backgrounds[r], features)
-attrib_scatter_plot(regional_decompositions, regional_shap, regional_backgrounds, 
-                    features=features, n_cols=5, figsize=(18, 4))
-plt.savefig(os.path.join("Images", "8_scatter_regional_anchored_add.png"), bbox_inches="tight")
+    regional_decompositions[r] = get_components_brute_force(h, regional_backgrounds[r], regional_backgrounds[r], features)
+    regional_shap[r] = permutation_shap(h, regional_backgrounds[r], regional_backgrounds[r], features)
+attrib_scatter_plot(regional_decompositions, regional_shap, regional_backgrounds, features=features, n_cols=5, figsize=(18, 4))
+plt.savefig(os.path.join("Images", "scatter_8_regional_anchored_add.png"), bbox_inches="tight")
 
 # Grouped Full Anchored decomposition
 regional_decompositions = [[], []]
 regional_shap = [[], []]
 for r in range(2):
-    regional_decompositions[r] = get_components_adaptive(h, regional_backgrounds[r],
-                                                           features, tolerance=1e-5)
+    regional_decompositions[r] = get_components_adaptive(h, regional_backgrounds[r], features, tolerance=1e-5)
     regional_shap[r] = shap_from_decomposition(regional_decompositions[r])
-attrib_scatter_plot(regional_decompositions, regional_shap, regional_backgrounds, 
-                    features=features, n_cols=5, figsize=(18, 4))
-plt.savefig(os.path.join("Images", "9_scatter_regional_anchored_full.png"), bbox_inches="tight")
+attrib_scatter_plot(regional_decompositions, regional_shap, regional_backgrounds, features=features, n_cols=5, figsize=(18, 4))
+plt.savefig(os.path.join("Images", "scatter_9_regional_anchored_full.png"), bbox_inches="tight")
 
 
 # Regional Interventional Additive decomposition
 regional_decompositions = [[], []]
 regional_shap = [[], []]
 for r in range(2):
-    regional_decompositions[r] = get_components_brute_force(h, regional_backgrounds[r], 
-                                                           regional_backgrounds[r],
-                                                           features,
-                                                           anchored=False)
-    regional_shap[r] = permutation_shap(h, regional_backgrounds[r], 
-                                        regional_backgrounds[r], features)
+    regional_decompositions[r] = get_components_brute_force(h, regional_backgrounds[r], regional_backgrounds[r],
+                                                           features, anchored=False)
+    regional_shap[r] = permutation_shap(h, regional_backgrounds[r], regional_backgrounds[r], features)
 attrib_scatter_plot(regional_decompositions, regional_shap, regional_backgrounds, 
                     features=features, n_cols=5, figsize=(18, 4))
-plt.savefig(os.path.join("Images", "10_scatter_regional_interv_add.png"), bbox_inches="tight")
+plt.savefig(os.path.join("Images", "scatter_10_regional_interv_add.png"), bbox_inches="tight")
 
 # Grouped Full Anchored decomposition 
 regional_decompositions = [[], []]
 regional_shap = [[], []]
 for r in range(2):
-    regional_decompositions[r] = get_components_adaptive(h, regional_backgrounds[r],
-                                                           features, tolerance=1e-5)
+    regional_decompositions[r] = get_components_adaptive(h, regional_backgrounds[r], features, tolerance=1e-5)
     regional_decompositions[r] = get_interventional_from_anchored(regional_decompositions[r])
     regional_shap[r] = shap_from_decomposition(regional_decompositions[r])
-attrib_scatter_plot(regional_decompositions, regional_shap, regional_backgrounds, 
-                    features=features, n_cols=5, figsize=(18, 4))
-plt.savefig(os.path.join("Images", "11_scatter_regional_interv_full.png"), bbox_inches="tight")
+attrib_scatter_plot(regional_decompositions, regional_shap, regional_backgrounds, features=features, n_cols=5, figsize=(18, 4))
+plt.savefig(os.path.join("Images", "scatter_11_regional_interv_full.png"), bbox_inches="tight")
 
 
 # Top - 3
-attrib_scatter_plot(regional_decompositions, regional_shap, regional_backgrounds, 
+attrib_scatter_plot(regional_decompositions, regional_shap, regional_backgrounds,
                     idxs=3, features=features, n_cols=5, figsize=(12, 4))
-plt.savefig(os.path.join("Images", "12_scatter_region_top_3.png"), bbox_inches="tight")
+plt.savefig(os.path.join("Images", "scatter_12_region_top_3.png"), bbox_inches="tight")
 
 # Go to the next row
 attrib_scatter_plot(regional_decompositions, regional_shap, regional_backgrounds, 
                     idxs=3, features=features, n_cols=2, figsize=(8, 8))
-plt.savefig(os.path.join("Images", "13_scatter_region_top_3_next_row.png"), bbox_inches="tight")
+plt.savefig(os.path.join("Images", "scatter_13_region_top_3_next_row.png"), bbox_inches="tight")
 
 # Specific idxs
 attrib_scatter_plot(regional_decompositions, regional_shap, regional_backgrounds,
                     idxs=[0, 2, 4], features=features, n_cols=5, figsize=(12, 4))
-plt.savefig(os.path.join("Images", "14_scatter_region_idxs_024.png"), bbox_inches="tight")
+plt.savefig(os.path.join("Images", "scatter_14_region_idxs_024.png"), bbox_inches="tight")
 
 # Go to the next row
 attrib_scatter_plot(regional_decompositions, regional_shap, regional_backgrounds,
                     idxs=[0, 2, 4], features=features, n_cols=2, figsize=(8, 8))
-plt.savefig(os.path.join("Images", "15_scatter_region_idxs_024_next_row.png"), bbox_inches="tight")
+plt.savefig(os.path.join("Images", "scatter_15_region_idxs_024_next_row.png"), bbox_inches="tight")
 
 
 ###################################################################
@@ -173,46 +155,48 @@ plt.savefig(os.path.join("Images", "15_scatter_region_idxs_024_next_row.png"), b
 
 grouped_features = features.group([[0, 1]])
 grouped_features.summary()
+# Here grouped features should be ignored (raising a warning) since we cannot plot
+# their main effect as a line chart,
 
 # Anchored Additive decomposition
 decomposition = get_components_brute_force(h, X, X, grouped_features)
 shap_values = permutation_shap(h, X, X, grouped_features, M=40)
 attrib_scatter_plot(decomposition, shap_values, foreground=X, features=grouped_features, n_cols=5)
-plt.savefig(os.path.join("Images", "16_scatter_group_anchored_add.png"), bbox_inches="tight")
+plt.savefig(os.path.join("Images", "scatter_16_group_anchored_add.png"), bbox_inches="tight")
 
 # Full Anchored decomposition (PDPs should ignore non-additive keys)
 decomposition = get_components_adaptive(h, X, grouped_features, tolerance=1e-5)
 shap_values = shap_from_decomposition(decomposition)
 attrib_scatter_plot(decomposition, shap_values, X, features=grouped_features, n_cols=5)
-plt.savefig(os.path.join("Images", "17_scatter_group_anchored_full.png"), bbox_inches="tight")
+plt.savefig(os.path.join("Images", "scatter_17_group_anchored_full.png"), bbox_inches="tight")
 
 # Interventional Additive decomposition
 decomposition = get_components_brute_force(h, X, X, grouped_features, anchored=False)
 shap_values = permutation_shap(h, X, X, grouped_features, M=40)
 attrib_scatter_plot(decomposition, shap_values, X, features=grouped_features, n_cols=5)
-plt.savefig(os.path.join("Images", "18_scatter_group_interv_add.png"), bbox_inches="tight")
+plt.savefig(os.path.join("Images", "scatter_18_group_interv_add.png"), bbox_inches="tight")
 
 # Full Interventional decomposition (PDPs should ignore non-additive keys)
 decomposition = get_components_adaptive(h, X, grouped_features, tolerance=1e-5)
 decomposition = get_interventional_from_anchored(decomposition)
 shap_values = shap_from_decomposition(decomposition)
 attrib_scatter_plot(decomposition, shap_values, X, features=grouped_features, n_cols=5)
-plt.savefig(os.path.join("Images", "19_scatter_group_interv_full.png"), bbox_inches="tight")
+plt.savefig(os.path.join("Images", "scatter_19_group_interv_full.png"), bbox_inches="tight")
 
 # Play with n_cols and idxs
 
 # Top - 3
 attrib_scatter_plot(decomposition, shap_values, X, idxs=2, features=grouped_features, n_cols=5)
-plt.savefig(os.path.join("Images", "20_scatter_group_top_2.png"), bbox_inches="tight")
+plt.savefig(os.path.join("Images", "scatter_20_group_top_2.png"), bbox_inches="tight")
 
 # Go to the next row
 attrib_scatter_plot(decomposition, shap_values, X, idxs=2, features=grouped_features, n_cols=1)
-plt.savefig(os.path.join("Images", "21_scatter_group_top_2_next_row.png"), bbox_inches="tight")
+plt.savefig(os.path.join("Images", "scatter_21_group_top_2_next_row.png"), bbox_inches="tight")
 
 # Specific idxs
 attrib_scatter_plot(decomposition, shap_values, X, idxs=[0, 2, 3], features=grouped_features, n_cols=5)
-plt.savefig(os.path.join("Images", "22_scatter_group_idxs_023.png"), bbox_inches="tight")
+plt.savefig(os.path.join("Images", "scatter_22_group_idxs_023.png"), bbox_inches="tight")
 
 # Will not go to the next row because grouped features are ignored
 attrib_scatter_plot(decomposition, shap_values, X, idxs=[0, 2 ,3], features=grouped_features, n_cols=2)
-plt.savefig(os.path.join("Images", "23_scatter_group_idxs_023_next_row.png"), bbox_inches="tight")
+plt.savefig(os.path.join("Images", "scatter_23_group_idxs_023_next_row.png"), bbox_inches="tight")

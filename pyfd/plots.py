@@ -245,125 +245,138 @@ def get_curr_axis(n_rows, n_cols, ax, iter):
     return curr_ax
 
 
-def partial_dependence_plot(decomposition, foreground, background, features, idxs=None,
-                            groups_method=None, rules=None, fd_trees_kwargs={}, centered=True,
-                            figsize=None, n_cols=5, plot_hist=False, normalize_y=True, alpha=0.01):
+
+def partial_dependence_plot(decomposition, foreground, features, idxs=None, plot_hist=True, normalize_y=True, 
+                                                            centered=False, n_curves=200, figsize=None, n_cols=5):
+    """ 
+    Plot the partial dependence plot as a function of x_i.
+
+    Parameters
+    ----------
+    decomposition : dict{Tuple: np.ndarray}
+        The components of the decomposition indexed via their feature subset e.g. 
+        `decomposition[(0,)]` is an array of shape (Nf, Nb) or (Nf,). Can be a
+        List(dict) of length `n_regions`.
+    foreground : (Nf, d) np.ndarray
+        The foreground data. Can be a list List(np.ndarray) of length `n_regions`.
+    features : Features
+        The features object.
+    idxs : List(int) or int, default=None
+        The index of the features to plot. When 
+        - `None`, all non-group features are plotted.
+        - `List(int)`, the non-group features with indices in List are plotted.
+        - `int`, the top-idxs non-group features are plotted.
     
-    # If no idxs is provided, we plot all features
-    if idxs is None:
-        idxs = range(len(features))
+    plot_hist : bool, default=True
+        Plot the histogram of foreground data. Only available if an interventional
+        decomposition is provided. Otherwise, there are risks of information overload.
+    normalize_y : bool, default=True
+        Have the same y axis for all plots.
+    centered : bool, default=False
+        Center the ICE curves so they integrate to 0 along x_i (useful to compare their 
+        shape rather than their value).
+    figsize : List(int), default=None
+        The size (Nx, Ny) of the figure.
+    n_cols : int, default=5
+        The number of columns in the subplot.
+    """
+    if idxs is None or type(idxs) == int:
+        top_k = idxs if type(idxs) == int else len(features)
+        idxs = list(range(len(features)))
         Imap_inv = deepcopy(features.Imap_inv)
     else:
+        top_k = len(idxs)
         Imap_inv = deepcopy([features.Imap_inv[i] for i in idxs])
-    for i in range(len(idxs)):
-        assert len(Imap_inv[i]) == 1, "No feature grouping in PDP plots"
-        Imap_inv[i] = Imap_inv[i][0]
+    # Remove grouped features
+    for i in range(len(idxs)-1, -1, -1):
+        if len(Imap_inv[i]) > 1:
+            warn("Grouped Features Ignored")
+            del idxs[i]
+            del Imap_inv[i]
+        else:
+            Imap_inv[i] = Imap_inv[i][0]
     
-    anchored = decomposition[(0,)].shape == (foreground.shape[0], background.shape[0])
-    additive_keys = [(idx,) for idx in idxs]
-    d = len(additive_keys)
-
-    if anchored:
-        y_min = min([np.percentile(decomposition[key], 1) for key in additive_keys])
-        y_max = max([np.percentile(decomposition[key], 99) for key in additive_keys])
-        importance = np.array([np.mean(decomposition[key].mean(0)**2) for key in additive_keys])
+    # Lists are passed for regional plots
+    if type(decomposition) == list:
+        assert type(foreground) == list, "Provide lists of foregrounds and backgrounds"
+        assert len(foreground) == len(decomposition), "Must have a consistent number of regions"
+        colors = COLORS
+    # Otherwise non-regional explanations are shown
     else:
-        y_min = min([decomposition[key].min() for key in additive_keys])
-        y_max = max([decomposition[key].max() for key in additive_keys])
-        importance = np.array([np.var(decomposition[key]) for key in additive_keys])
-    idxs_ordered = np.argsort(-importance)
+        assert type(decomposition) == dict
+        assert type(foreground) == np.ndarray
+        decomposition = [decomposition]
+        foreground = [foreground]
+        colors = ["grey"]
+    n_regions = len(decomposition)
+    anchored = decomposition[0][(0,)].ndim == 2
 
-    delta_y = (y_max-y_min)
+    # Min/max and feature importance
+    if anchored:
+        y_min = min([min([np.percentile(decomposition[r][(i,)], 1) for r in range(n_regions)]) for i in idxs])
+        y_max = max([max([np.percentile(decomposition[r][(i,)], 99) for r in range(n_regions)]) for i in idxs])
+        importance = np.array([np.max([np.mean(decomposition[r][(i,)].mean(0)**2) for r in range(n_regions)]) for i in idxs])
+    else:
+        y_min = min([min([np.min(decomposition[r][(i,)]) for r in range(n_regions)]) for i in idxs])
+        y_max = max([max([np.max(decomposition[r][(i,)]) for r in range(n_regions)]) for i in idxs])
+        importance = np.array([np.max([np.var(decomposition[r][(i,)]) for r in range(n_regions)]) for i in idxs])
+    delta_y = y_max - y_min
     y_min = y_min - delta_y*0.01
     y_max = y_max + delta_y*0.01
+    # The elements of idxs sorted in order of corresponding feature importance
+    order = np.argsort(-importance)[:top_k]
 
-    if len(idxs) < n_cols:
-        n_cols = len(idxs)
+    if len(order) < n_cols:
+        n_cols = len(order)
         n_rows = 1
     else:
-        n_rows = ceil(d / n_cols)
+        n_rows = ceil(len(order) / n_cols)
     _, ax = plt.subplots(n_rows, n_cols, figsize=figsize)
-    for iter, i in enumerate(idxs_ordered):
-        # Get current axis to plot
-        curr_ax = get_curr_axis(n_rows, n_cols, ax, iter)
+    for iteration, i in enumerate(order):
+        # Get axis to plot
+        curr_ax = get_curr_axis(n_rows, n_cols, ax, iteration)
 
-        # Key represents the name of the component
-        key = additive_keys[i]
         # To which column of X it corresponds
         column = Imap_inv[i]
-        x_min = foreground[:, column].min()
-        x_max = foreground[:, column].max()
-        # What feature is being studied
+        x_min = min(f[:, column].min() for f in foreground)
+        x_max = max(f[:, column].max() for f in foreground)
         feature = features.feature_objs[idxs[i]]
 
-        if plot_hist:
-            # TODO plot better histograms when categorical or integer
-            _, _, rects = curr_ax.hist(foreground[:, column], bins=20, rwidth=0.95, color="gray", alpha=0.6, bottom=y_min)
-            max_height = max([h.get_height() for h in rects])
-            target_max_height = 0.5 * delta_y
-            for r in rects:
-                r.set_height(target_max_height*r.get_height()/max_height)
-        
-        if not anchored:
-            sorted_idx = np.argsort(foreground[:, column])
-            curr_ax.plot(foreground[sorted_idx, column], decomposition[key][sorted_idx], 'k-')
-        else:
-            plot_legend = False
-            if groups_method is None:
-                colors = ['k']
-                rules = "all"
-                n_groups = 1
-                groups_foreground = np.zeros(foreground.shape[0])
-                groups_background = np.zeros(background.shape[0])
-            elif callable(groups_method):
-                colors = COLORS
-                assert rules is not None, "When providing groups you must also provide their rule description"
-                n_groups = len(rules)
-                groups_foreground = groups_method(foreground)
-                groups_background = groups_method(background)
-            elif groups_method in ["gadget-pdp", "pdp-pfi"]:
-                colors = COLORS
-                assert id(foreground) ==  id(background) ,"FDTrees requires background=foreground"
-                # Fit a FDTree to reduce interactions involving the feature `column`
-                decomp_copy = {}
-                decomp_copy[()] = decomposition[()]
-                decomp_copy[(0,)] = decomposition[key]
-                background_slice = np.delete(background, column, axis=1)
-                features_slice = features.remove([column])
-                fd_tree = GADGET_PDP(features=features_slice, **fd_trees_kwargs) if groups_method == "gadget-pdp" \
-                    else  PDP_PFI_Tree(features=features_slice, **fd_trees_kwargs) 
-                fd_tree.fit(background_slice, decomp_copy)
-                rules = fd_tree.rules(use_latex=True)
-                groups_background = fd_tree.predict(background_slice)
-                groups_foreground = groups_background
-                n_groups = fd_tree.n_groups
-                plot_legend = n_groups > 1
-            else:
-                raise Exception("Invalid grouping parameter")
+        for r in range(n_regions):
+            color = colors[r]
 
-            # For each group plot the anchored components in color
-            n_curves_max = 500 // n_groups
-            for group_id in range(n_groups):
-                group_foreground = foreground[groups_foreground==group_id]
-                sorted_idx = np.argsort(group_foreground[:, column])
-                select_f = np.where(groups_foreground==group_id)[0][sorted_idx].reshape((-1, 1))
-                select_b = np.where(groups_background==group_id)[0].reshape((-1, 1))
-                H = decomposition[key][select_f, select_b.T]
+            # Plot the PDP/ICE curves
+            sorted_idx = np.argsort(foreground[r][:, column])
+            key = (idxs[i],)
+            if not anchored:
+                curr_ax.plot(foreground[r][sorted_idx, column], decomposition[r][key][sorted_idx], 'k-', linewidth=3)
+                if n_regions > 1:
+                    curr_ax.plot(foreground[r][sorted_idx, column], decomposition[r][key][sorted_idx], color, linewidth=2)
+                if plot_hist:
+                    # TODO plot better histograms when categorical or integer
+                    _, _, histogram = curr_ax.hist(foreground[r][:, column], bins=20, rwidth=0.9, color=color, 
+                                                                               alpha=0.6, bottom=y_min)
+                    max_height = max([h.get_height() for h in histogram])
+                    target_max_height = 0.5 * delta_y
+                    for h in histogram:
+                        h.set_height(target_max_height*h.get_height()/max_height)
+            else:
+                # For each group plot the anchored components in color
+                n_curves_max = n_curves // n_regions
+                H = decomposition[r][key][sorted_idx]
                 # Center the curves w.r.t the xaxis
                 if centered:
                     H = H - H.mean(0)
                 # Otherwise show the pdp/ice plus intercept
                 # else:
                 #     H += decomposition[()][select_b.ravel()]
-                x = group_foreground[sorted_idx, column]
-                # Plot at most 200 ICE curves
-                curr_ax.plot(x, H[:, :n_curves_max], colors[group_id], alpha=alpha)
+                x = foreground[r][sorted_idx, column]
+                # Plot at most n_curves ICE curves
+                curr_ax.plot(x, H[:, :n_curves_max], color, alpha=0.1)
                 curr_ax.plot(x, H.mean(1), 'k', linewidth=3)
-                curr_ax.plot(x, H.mean(1), colors[group_id], label=rules[group_id], linewidth=2)
-        
-            if plot_legend:
-                curr_ax.legend(fontsize=12, framealpha=1)
-        
+                if n_regions > 1:
+                    curr_ax.plot(x, H.mean(1), color, linewidth=2)
+    
         # xticks labels for categorical data
         if feature.type in ["bool", "ordinal", "nominal"]:
             if feature.type in ["ordinal", "nominal"]:
@@ -371,27 +384,175 @@ def partial_dependence_plot(decomposition, foreground, background, features, idx
                 # Truncate names if too long
                 # if len(categories) > 5:
                 # categories = [name[:3] for name in categories]
-                rotation = 90
+                rotation = 45
             else:
                 categories = [False, True]
                 rotation = 0
             curr_ax.set_xticks(np.arange(len(categories)), labels=categories, rotation=rotation)
-        
+
         # Set ticks and labels
         curr_ax.grid('on')
         curr_ax.set_xlabel(feature.name)
-        if iter%n_cols == 0:
+        if iteration%n_cols == 0:
             curr_ax.set_ylabel("Local Feature Attribution")
         curr_ax.set_xlim(x_min, x_max)
         if normalize_y:
             curr_ax.set_ylim(y_min, y_max)
-            if not iter%n_cols == 0:
+            if not iteration%n_cols == 0:
                 curr_ax.yaxis.set_ticklabels([])
     # Remove unused axes
-    iter += 1
-    while iter < n_rows * n_cols:
-        get_curr_axis(n_rows, n_cols, ax, iter).set_axis_off()
-        iter += 1
+    iteration += 1
+    while iteration < n_rows * n_cols:
+        get_curr_axis(n_rows, n_cols, ax, iteration).set_axis_off()
+        iteration += 1
+
+#def partial_dependence_plot(decomposition, foreground, background, features, idxs=None,
+#                            groups_method=None, rules=None, fd_trees_kwargs={}, centered=True,
+#                            figsize=None, n_cols=5, plot_hist=False, normalize_y=True, alpha=0.01):
+#    
+#    # If no idxs is provided, we plot all features
+#    if idxs is None:
+#        idxs = range(len(features))
+#        Imap_inv = deepcopy(features.Imap_inv)
+#    else:
+#        Imap_inv = deepcopy([features.Imap_inv[i] for i in idxs])
+#    for i in range(len(idxs)):
+#        assert len(Imap_inv[i]) == 1, "No feature grouping in PDP plots"
+#        Imap_inv[i] = Imap_inv[i][0]
+#    
+#    anchored = decomposition[(0,)].shape == (foreground.shape[0], background.shape[0])
+#    additive_keys = [(idx,) for idx in idxs]
+#    d = len(additive_keys)
+#
+#    if anchored:
+#        y_min = min([np.percentile(decomposition[key], 1) for key in additive_keys])
+#        y_max = max([np.percentile(decomposition[key], 99) for key in additive_keys])
+#        importance = np.array([np.mean(decomposition[key].mean(0)**2) for key in additive_keys])
+#    else:
+#        y_min = min([decomposition[key].min() for key in additive_keys])
+#        y_max = max([decomposition[key].max() for key in additive_keys])
+#        importance = np.array([np.var(decomposition[key]) for key in additive_keys])
+#    idxs_ordered = np.argsort(-importance)
+#
+#    delta_y = (y_max-y_min)
+#    y_min = y_min - delta_y*0.01
+#    y_max = y_max + delta_y*0.01
+#
+#    if len(idxs) < n_cols:
+#        n_cols = len(idxs)
+#        n_rows = 1
+#    else:
+#        n_rows = ceil(d / n_cols)
+#    _, ax = plt.subplots(n_rows, n_cols, figsize=figsize)
+#    for iter, i in enumerate(idxs_ordered):
+#        # Get current axis to plot
+#        curr_ax = get_curr_axis(n_rows, n_cols, ax, iter)
+#
+#        # Key represents the name of the component
+#        key = additive_keys[i]
+#        # To which column of X it corresponds
+#        column = Imap_inv[i]
+#        x_min = foreground[:, column].min()
+#        x_max = foreground[:, column].max()
+#        # What feature is being studied
+#        feature = features.feature_objs[idxs[i]]
+#
+#        if plot_hist:
+#            # TODO plot better histograms when categorical or integer
+#            _, _, rects = curr_ax.hist(foreground[:, column], bins=20, rwidth=0.95, color="gray", alpha=0.6, bottom=y_min)
+#            max_height = max([h.get_height() for h in rects])
+#            target_max_height = 0.5 * delta_y
+#            for r in rects:
+#                r.set_height(target_max_height*r.get_height()/max_height)
+#        
+#        if not anchored:
+#            sorted_idx = np.argsort(foreground[:, column])
+#            curr_ax.plot(foreground[sorted_idx, column], decomposition[key][sorted_idx], 'k-')
+#        else:
+#            plot_legend = False
+#            if groups_method is None:
+#                colors = ['k']
+#                rules = "all"
+#                n_groups = 1
+#                groups_foreground = np.zeros(foreground.shape[0])
+#                groups_background = np.zeros(background.shape[0])
+#            elif callable(groups_method):
+#                colors = COLORS
+#                assert rules is not None, "When providing groups you must also provide their rule description"
+#                n_groups = len(rules)
+#                groups_foreground = groups_method(foreground)
+#                groups_background = groups_method(background)
+#            elif groups_method in ["gadget-pdp", "pdp-pfi"]:
+#                colors = COLORS
+#                assert id(foreground) ==  id(background) ,"FDTrees requires background=foreground"
+#                # Fit a FDTree to reduce interactions involving the feature `column`
+#                decomp_copy = {}
+#                decomp_copy[()] = decomposition[()]
+#                decomp_copy[(0,)] = decomposition[key]
+#                background_slice = np.delete(background, column, axis=1)
+#                features_slice = features.remove([column])
+#                fd_tree = GADGET_PDP(features=features_slice, **fd_trees_kwargs) if groups_method == "gadget-pdp" \
+#                    else  PDP_PFI_Tree(features=features_slice, **fd_trees_kwargs) 
+#                fd_tree.fit(background_slice, decomp_copy)
+#                rules = fd_tree.rules(use_latex=True)
+#                groups_background = fd_tree.predict(background_slice)
+#                groups_foreground = groups_background
+#                n_groups = fd_tree.n_groups
+#                plot_legend = n_groups > 1
+#            else:
+#                raise Exception("Invalid grouping parameter")
+#
+#            # For each group plot the anchored components in color
+#            n_curves_max = 500 // n_groups
+#            for group_id in range(n_groups):
+#                group_foreground = foreground[groups_foreground==group_id]
+#                sorted_idx = np.argsort(group_foreground[:, column])
+#                select_f = np.where(groups_foreground==group_id)[0][sorted_idx].reshape((-1, 1))
+#                select_b = np.where(groups_background==group_id)[0].reshape((-1, 1))
+#                H = decomposition[key][select_f, select_b.T]
+#                # Center the curves w.r.t the xaxis
+#                if centered:
+#                    H = H - H.mean(0)
+#                # Otherwise show the pdp/ice plus intercept
+#                # else:
+#                #     H += decomposition[()][select_b.ravel()]
+#                x = group_foreground[sorted_idx, column]
+#                # Plot at most 200 ICE curves
+#                curr_ax.plot(x, H[:, :n_curves_max], colors[group_id], alpha=alpha)
+#                curr_ax.plot(x, H.mean(1), 'k', linewidth=3)
+#                curr_ax.plot(x, H.mean(1), colors[group_id], label=rules[group_id], linewidth=2)
+#        
+#            if plot_legend:
+#                curr_ax.legend(fontsize=12, framealpha=1)
+#        
+#        # xticks labels for categorical data
+#        if feature.type in ["bool", "ordinal", "nominal"]:
+#            if feature.type in ["ordinal", "nominal"]:
+#                categories = feature.cats
+#                # Truncate names if too long
+#                # if len(categories) > 5:
+#                # categories = [name[:3] for name in categories]
+#                rotation = 90
+#            else:
+#                categories = [False, True]
+#                rotation = 0
+#            curr_ax.set_xticks(np.arange(len(categories)), labels=categories, rotation=rotation)
+#        
+#        # Set ticks and labels
+#        curr_ax.grid('on')
+#        curr_ax.set_xlabel(feature.name)
+#        if iter%n_cols == 0:
+#            curr_ax.set_ylabel("Local Feature Attribution")
+#        curr_ax.set_xlim(x_min, x_max)
+#        if normalize_y:
+#            curr_ax.set_ylim(y_min, y_max)
+#            if not iter%n_cols == 0:
+#                curr_ax.yaxis.set_ticklabels([])
+#    # Remove unused axes
+#    iter += 1
+#    while iter < n_rows * n_cols:
+#        get_curr_axis(n_rows, n_cols, ax, iter).set_axis_off()
+#        iter += 1
 
 
 def attrib_scatter_plot(decomposition, shapley_values, foreground, features, idxs=None,
@@ -485,9 +646,9 @@ def attrib_scatter_plot(decomposition, shapley_values, foreground, features, idx
     else:
         n_rows = ceil(len(order) / n_cols)
     _, ax = plt.subplots(n_rows, n_cols, figsize=figsize)
-    for iter, i in enumerate(order):
+    for iteration, i in enumerate(order):
         # Get axis to plot
-        curr_ax = get_curr_axis(n_rows, n_cols, ax, iter)
+        curr_ax = get_curr_axis(n_rows, n_cols, ax, iteration)
 
         # To which column of X it corresponds
         column = Imap_inv[i]
@@ -539,18 +700,18 @@ def attrib_scatter_plot(decomposition, shapley_values, foreground, features, idx
         # Set ticks and labels
         curr_ax.grid('on')
         curr_ax.set_xlabel(feature.name)
-        if iter%n_cols == 0:
+        if iteration%n_cols == 0:
             curr_ax.set_ylabel("Local Feature Attribution")
         curr_ax.set_xlim(x_min, x_max)
         if normalize_y:
             curr_ax.set_ylim(y_min, y_max)
-            if not iter%n_cols == 0:
+            if not iteration%n_cols == 0:
                 curr_ax.yaxis.set_ticklabels([])
     # Remove unused axes
-    iter += 1
-    while iter < n_rows * n_cols:
-        get_curr_axis(n_rows, n_cols, ax, iter).set_axis_off()
-        iter += 1
+    iteration += 1
+    while iteration < n_rows * n_cols:
+        get_curr_axis(n_rows, n_cols, ax, iteration).set_axis_off()
+        iteration += 1
 
 
 
