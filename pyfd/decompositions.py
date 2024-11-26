@@ -735,10 +735,9 @@ def get_H_interaction(decomposition, return_keys=False):
 
 
 
-def get_h_add(decomposition, anchored=True):
+def get_h_add(decomposition, anchored=True, all_subsets=False):
     """
-    Compute additive decomposition `h_add(x) = sum_i h_i(x)`
-    evaluated at each foreground point x
+    Compute additive decomposition `h_add(x) = sum_i h_i(x)` evaluated at each foreground point x
 
     Parameters
     ----------
@@ -747,6 +746,9 @@ def get_h_add(decomposition, anchored=True):
     anchored : bool, default=True
         If True then the decomposition is anchored and if False the decomposition
         is interventional
+    all_subsets : bool, default=False
+        If True, then returns the summation over all subsets sum_u h_u(x). This is
+        useful when we estimate the lattice space and want to know the resulting error.
 
     Returns
     -------
@@ -756,7 +758,10 @@ def get_h_add(decomposition, anchored=True):
     """
 
     keys = decomposition.keys()
-    additive_keys = [key for key in keys if len(key)==1]
+    if all_subsets:
+        additive_keys = keys
+    else:
+        additive_keys = [key for key in keys if len(key)==1]
     h_add = 0
     # Additive terms
     for key in additive_keys:
@@ -770,7 +775,7 @@ def get_h_add(decomposition, anchored=True):
 
 
 
-def get_CoE(decomposition, foreground_preds=None):
+def get_CoE(decomposition, foreground_preds=None, all_subsets=False):
     """
     Compute Cost of Exclusion `CoE = Ex( (h(x) - h_add(x))^2 )`
 
@@ -785,6 +790,9 @@ def get_CoE(decomposition, foreground_preds=None):
         to `None`, it is assumed that foreground=background and so these predictions can be
         extracted from `decomposition[()]`. If `decomposition` is a List, then this must also
         be a list with the same length.
+    all_subsets : bool, default=False
+        If True, then returns the summation over all subsets sum_u h_u(x). This is
+        useful when we estimate the lattice space and want to know the resulting error.
     Returns
     -------
     coe : float
@@ -816,7 +824,7 @@ def get_CoE(decomposition, foreground_preds=None):
     # Iterate over all regions
     for r in range(n_regions):
         # Get the additive decomposition intercept + sum_i h_i
-        h_add = get_h_add(decomposition[r], anchored)
+        h_add = get_h_add(decomposition[r], anchored, all_subsets)
         weights[r] = len(foreground_preds[r])
         if anchored:
             CoEs[r] =  np.mean( (foreground_preds[r] - h_add.mean(1))**2 )
