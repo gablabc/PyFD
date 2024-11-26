@@ -759,7 +759,7 @@ def get_h_add(decomposition, anchored=True, all_subsets=False):
 
     keys = decomposition.keys()
     if all_subsets:
-        additive_keys = keys
+        additive_keys = [key for key in keys if len(key)>=1]
     else:
         additive_keys = [key for key in keys if len(key)==1]
     h_add = 0
