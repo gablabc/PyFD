@@ -2,7 +2,9 @@
 
 import pytest
 import numpy as np
-from sklearn.linear_model import Ridge, LogisticRegression
+from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
+from sklearn.linear_model import SGDRegressor, SGDClassifier, LogisticRegression
+from sklearn.svm import LinearSVC
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import FunctionTransformer, SplineTransformer
@@ -19,7 +21,7 @@ def setup_toy_task(d_num, d_cat=0, n_samples=500, task="regression"):
     d = d_num + d_cat
     X_num = np.random.normal(0, 1, size=(n_samples, d_num))
     if d_cat > 0:
-        X_cat = np.random.randint(0, 10, size=(n_samples, d_cat))
+        X_cat = np.random.randint(0, 5, size=(n_samples, d_cat))
         X = np.hstack((X_num, X_cat))
     else:
         X_cat = 0
@@ -44,10 +46,10 @@ def setup_toy_task(d_num, d_cat=0, n_samples=500, task="regression"):
 def test_toy_linear(task, num_encoding, drop_ohe_cat):
 
     # Setup data and model
-    d_num = 5
-    d_cat = 5
+    d_num = 2
+    d_cat = 2
     d = d_num + d_cat
-    X, y, features = setup_toy_task(d_num, d_cat, 1000, task)
+    X, y, features = setup_toy_task(d_num, d_cat, 300, task)
     # Encoding numerical features
     if num_encoding == "identity": 
         numerical_encoder = FunctionTransformer()
@@ -68,28 +70,31 @@ def test_toy_linear(task, num_encoding, drop_ohe_cat):
                 ('num', numerical_encoder, list(range(d_num))), ('cat', ohe_encoder, list(range(d_num, d)) )
                 ])
     if task == "regression":
-        lin_model = Ridge()
+        lin_models = [Ridge(), Lasso(), ElasticNet(), SGDRegressor()]
     else:
-        lin_model = LogisticRegression()
-    model = Pipeline([('encoder', encoder), ('scaler', StandardScaler()), ('predictor', lin_model)])
-    model.fit(X, y)
+        lin_models = [LogisticRegression(), SGDClassifier(), LinearSVC()]
 
-    # Explain the model
-    foreground = X
-    background = X
-    components = get_components_linear(model, foreground, background, features)
+    # Try out multiple models
+    for lin_model in lin_models:
+        model = Pipeline([('encoder', encoder), ('scaler', StandardScaler()), ('predictor', lin_model)])
+        model.fit(X, y)
 
-    # Sanity check
-    if task == "regression":
-        h = model.predict
-    else:
-        h = model.decision_function
-    components_2 = get_components_brute_force(h, foreground, background, features)
-    for i in range(d):
-        assert np.isclose(components[(i,)], components_2[(i,)].mean(1)).all()
+        # Explain the model
+        foreground = X
+        background = X
+        components = get_components_linear(model, foreground, background, features)
+
+        # Sanity check
+        if task == "regression":
+            h = model.predict
+        else:
+            h = model.decision_function
+        components_2 = get_components_brute_force(h, foreground, background, features)
+        for i in range(d):
+            assert np.isclose(components[(i,)], components_2[(i,)].mean(1)).all(), f"Fail for {type(lin_model)}"
 
 
 
 if __name__ == "__main__":
-    test_toy_linear("regression", "bins", True)
+    test_toy_linear("regression", "identity", False)
 

@@ -7,7 +7,9 @@ from tqdm import tqdm
 import os
 from copy import deepcopy
 
-from sklearn.linear_model import LinearRegression, Ridge, LogisticRegression, PoissonRegressor
+from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
+from sklearn.linear_model import SGDRegressor, SGDClassifier, LogisticRegression
+from sklearn.svm import LinearSVC
 
 from .utils import check_Imap_inv, get_leaf_box, ravel, powerset, key_from_term
 from .utils import get_term_bin_weights, setup_linear, setup_brute_force, setup_treeshap
@@ -41,13 +43,14 @@ def get_components_linear(h, foreground, background, features):
         The various components of the decomposition indexed via their feature subset e.g. `decomposition[(0,)]`
         is a (Nf,) np.ndarray.
     """
-    SKLEARN_LINEAR = [LinearRegression, Ridge, LogisticRegression, PoissonRegressor]
+    SKLEARN_LINEAR = [LinearRegression, Ridge, Lasso, ElasticNet,
+                      SGDRegressor, SGDClassifier, LogisticRegression, LinearSVC]
 
     # Setup
     Imap_inv = features.Imap_inv
     predictor, foreground, background, Imap_inv = setup_linear(h, foreground, background, Imap_inv, SKLEARN_LINEAR)
     # For regression we explain the direct output
-    if type(predictor) in [LinearRegression, Ridge, PoissonRegressor]:
+    if type(predictor) in [LinearRegression, Ridge, Lasso, ElasticNet, SGDRegressor]:
         h_emptyset_z = predictor.predict(background)
     # For classification we explain the logit
     else:
