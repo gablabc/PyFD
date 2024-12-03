@@ -23,6 +23,12 @@ dependencies = [
 ]
 dynamic = ["version"]
 
+[project.optional-dependencies]
+docs = [
+  'sphinx',
+  'nbsphinx',
+  'ipywidgets'
+]
 
 [tool.setuptools]
 packages = [
