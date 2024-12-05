@@ -177,6 +177,7 @@ class Features(object):
             Names of the features for each column
         types : List(str)
             A list indicating the type of each feature
+
             - `'num'` for numerical features
             - `'sparse_num'` for numerical features with many zeros
             - `'bool'` for True/False features
@@ -224,7 +225,7 @@ class Features(object):
         self.ordinal = list( set(range(len(types))) - set(self.nominal) )
     
     def print_value(self, x):
-        """ Map values of x into interpretable text """
+        """ Map values of x into interpretable text. """
         print_res = []
         for i in range(len(self.Imap_inv)):
             if len(self.Imap_inv[i]) == 1:
@@ -237,12 +238,15 @@ class Features(object):
         return print_res
     
     def names(self):
+        """ Return a List of str representing the name of each feature. """
         return [obj.name for obj in self.feature_objs]
 
     def types(self):
+        """ Return a List of str representing the type of each feature. """
         return [obj.type for obj in self.feature_objs]
     
     def summary(self):
+        """ A description of each feature name, type, cardinality, and which column(s) of X it refers to. """
         free_space = [3, 20, 20, 12, 18]
         print_res =  "|Idx|        Name        |        Type        |    Card    |      Groups      |\n"
         print_res += "-------------------------------------------------------------------------------\n"
@@ -267,8 +271,7 @@ class Features(object):
     
     def select(self, feature_idxs):
         """ 
-        Select the listed features. This will update the 
-        `Imap_inv` and `feature_objs` attributes of the class
+        Select the listed features.
 
         Parameters
         ----------
@@ -278,8 +281,7 @@ class Features(object):
         Returns
         -------
         feature_copy : Features
-            A copy of the Feature instance with selected features
-            and updated `Imap_inv` and `feature_objs`
+            A new Features object.
         """
 
         assert type(feature_idxs) in (tuple, list)
@@ -299,8 +301,7 @@ class Features(object):
 
     def remove(self, feature_idxs):
         """ 
-        Remove the listed features. This will update the 
-        `Imap_inv` and `feature_objs` attributes of the class
+        Remove the listed features.
 
         Parameters
         ----------
@@ -310,28 +311,25 @@ class Features(object):
         Returns
         -------
         feature_copy : Features
-            A copy of the Feature instance with removed features
-            and updated `Imap_inv` and `feature_objs`
+            A new Features object.
         """
         return self.select( [i for i in range(len(self.Imap_inv)) if not i in feature_idxs] )
 
 
     def group(self, feature_groups):
         """ 
-        Put the select feature into groups. This will update the 
-        `Imap_inv` and `feature_objs` attributes of the class
+        Put the select feature into groups.
 
         Parameters
         ----------
         feature_groups : List(List(int))
-            A List containing the groups to form `[[0, 1, 2], [3, 4, 5]]`
-            will group the features 0, 1, 2 together for example.
+            A List containing the groups to form. For example,  `[[0, 1, 2], [3, 4, 5]]`
+            will group the features 0, 1, 2 together and 3, 4, 5 together.
         
         Returns
         -------
         feature_copy : Features
-            A copy of the Feature instance with removed features
-            and updated `Imap_inv` and `feature_objs`
+            A new Features object.
         """
         assert type(feature_groups) in (tuple, list)
         assert type(feature_groups[0]) in (tuple, list)

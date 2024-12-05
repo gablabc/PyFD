@@ -19,18 +19,22 @@ def shap_from_decomposition(decomposition):
     """
     Compute the Shapley Values from a provided functional decomposition.
 
+    .. math::
+
+        \phi^{SHAP}(h, x) = \sum_{u:i\in u} h_{u,\mathcal{B}}(x_u)/|u|
+
     Parameters
     ----------
     decomposition : dict{Tuple: np.ndarray}
         The various components of the decomposition indexed via their feature subset e.g. 
         `decomposition[(1, 2, 3)]` returns the 3-way interactions between features 1, 2 and 3.
         Components can have shape (Nf,) or (Nf, Nb)
-    
+
     Returns
     -------
     shapley_values : np.ndarray
-        Shapley Values array of shape (Nf, Nb, n_features) if the decomposition is anchored and
-        (Nf, n_features) otherwise. 
+        Shapley Values array of shape `(Nf, Nb, n_features)` if the decomposition is anchored and
+        `(Nf, n_features)` otherwise.
     """
 
     # Setup
@@ -53,7 +57,7 @@ def shap_from_decomposition(decomposition):
 
 def permutation_shap(h, foreground, background, features, M=20, show_bar=True, reversed=True, return_nu_evals=False):
     """
-    Approximate the Shapley Values of any black box by sampling M permutations
+    Approximate the Shapley Values of any black box by sampling M permutations.
 
     Parameters
     ----------
@@ -150,7 +154,7 @@ def permutation_shap(h, foreground, background, features, M=20, show_bar=True, r
 
 def lattice_shap(h, foreground, background, features, interactions, show_bar=True, return_nu_evals=False):
     """
-    Approximate the Shapley Values of any black box given a subsample of the lattice-space
+    Approximate the Shapley Values of any black box given a subsample of the lattice-space.
 
     Parameters
     ----------
@@ -174,7 +178,7 @@ def lattice_shap(h, foreground, background, features, interactions, show_bar=Tru
     shapley_values : (Nf, n_features) np.ndarray
         The interventional shapley values.
     """
-    
+
     assert type(interactions) == list, "interactions must be a list of tuples"
     assert () in interactions
     S = len(interactions)
@@ -242,14 +246,15 @@ def interventional_treeshap(model, foreground, background, features, anchored=Fa
         Flag to compute anchored shapley values or interventional shapley values.
     algorithm : string, default='recurse'
         The algorithm used to compute the shapley values, the options are
+
         - `recurse` with complexity `Nf Nb 2^min(depth, n_features)` can compute anchored and interventional
         - `leaf` with complexity `(Nf+Nb) 2^min(depth, n_features)` can only compute interventional.
 
     Returns
     -------
     results : np.ndarray
-        A (Nf n_features) array of interventional SHAP values if `anchored=False`. 
-        Otherwise a (Nf, Nb, n_features) array of anchored SHAP values.
+        A `(Nf n_features)` array of interventional SHAP values if `anchored=False`. 
+        Otherwise a `(Nf, Nb, n_features)` array of anchored SHAP values.
     """
 
     sym = id(foreground) == id(background)
@@ -345,7 +350,7 @@ def interventional_treeshap(model, foreground, background, features, anchored=Fa
 
 def taylor_treeshap(model, foreground, background, features):
     """ 
-    Compute the Shapley-Taylor interaction indices by adapting the the TreeSHAP algorithm
+    Compute the Shapley-Taylor interaction indices by adapting the the TreeSHAP algorithm.
 
     Parameters
     ----------
@@ -362,7 +367,7 @@ def taylor_treeshap(model, foreground, background, features):
     Returns
     -------
     results : np.ndarray
-        A (N_foreground, n_features, n_features) array
+        A `(N_foreground, n_features, n_features)` array
     """
 
     # Setup
@@ -427,20 +432,25 @@ def get_SHAP_importance(shapley_values, p=2, bootstrap_error=False):
     """
     Aggregate Shapley Values to get global feature importance.
 
+    .. math::
+
+        \Phi^{SHAP}_i(h) = \mathbb{E}_{x\sim\mathcal{F}}[(\sum_{u:i\in u} h_{u,\mathcal{B}}(x_u)/|u|)^2]
+
     Parameters
     ----------
     shapley_values : np.ndarray
-        Array of shape (Nf, Nb, n_features) or (Nf, n_features).
+        Array of shape `(Nf, Nb, n_features)` or `(Nf, n_features)`.
+    p : int, default=2
+        Aggregate the power `p` of the local Shapley Values.
     bootstrap_error : bool, default=False
-        Return boostrap -/+ 95% error estimates. This requires anchored SHAP values of
-        shape (Nf, Nf, n_features) with foreground=background.
+        Return boostrap -/+ 95% error estimates. This requires anchored SHAP values of shape `(Nf, Nf, n_features)`.
 
     Returns
     -------
     I_PDP : (n_features,) np.ndarray
         PDP feature importance.
     error_PFI : (2, n_features) np.ndarray, optional
-        -/+ bootstrap errors for PFI importance
+        -/+ bootstrap errors for PFI importance.
     """
     # Get the SHAP feature importance
     anchored = shapley_values.ndim == 3

@@ -24,7 +24,9 @@ from .utils import get_term_bin_weights, setup_linear, setup_brute_force, setup_
 
 def get_components_linear(h, foreground, background, features):
     """
-    Compute the Interventional Decomposition of Linear Model
+    Compute the Interventional Decomposition of a Linear Model.
+
+    .. math:: h_{i, \mathcal{B}}(x_i) = \omega_i (x_i - \mathbb{E}_{z\sim\mathcal{B}}[z_i])
 
     Parameters
     ----------
@@ -35,7 +37,7 @@ def get_components_linear(h, foreground, background, features):
     background : (Nb, d) np.ndarray
         The data points at which to anchor the decomposition.
     features : Features
-        the columns 0 and 1 as a single feature. The default approach is to treat each column as a feature.
+        A Features object that represents which columns of X are treated as groups.
 
     Returns
     -------
@@ -71,7 +73,9 @@ def get_components_linear(h, foreground, background, features):
 
 def get_components_ebm(h, foreground, background, features, anchored=True):
     """
-    Compute the Interventional Decomposition of an Explainable Boosting Machine (EBM)
+    Compute the Interventional Decomposition of an Explainable Boosting Machine (EBM).
+
+    .. math:: h_{i,\mathcal{B}}(x_i)  = h_i(x_i) - \mathbb{E}_{z\sim\mathcal{B}}[h_i(z_i)]
 
     Parameters
     ----------
@@ -91,8 +95,8 @@ def get_components_ebm(h, foreground, background, features, anchored=True):
     -------
     decomposition : dict{Tuple: np.ndarray}
         The various components of the decomposition indexed via their feature subset e.g.
-        `decomposition[(0,)]` is a (Nf,) of (Nf, Nb) np.ndarray. This function returns all
-        main effects and pair-wise interactions involving the Imap_inv groups.
+        `decomposition[(0,)]` is a (Nf,) or (Nf, Nb) np.ndarray. This function returns all
+        main effects and pair-wise interactions involving the provided features.
     """
     from interpret.glassbox import ExplainableBoostingRegressor, ExplainableBoostingClassifier
     from interpret.glassbox._ebm._bin import eval_terms
@@ -258,7 +262,13 @@ def _get_anchored_components_u(decomposition, h, key, Imap_inv, x_idxs, foregrou
 
 def get_components_brute_force(h, foreground, background, features, interactions=1, anchored=True, show_bar=False):
     """
-    Compute the Anchored/Interventional Decomposition of any black box
+    Compute the Anchored/Interventional Decomposition of any black box.
+
+    .. math::
+
+        h_{u,z}(x_u) = \sum_{v\subseteq u} (-1)^{|u|-|v|} h(x_v, z_{-v})
+
+        h_{u,\mathcal{B}}(x_u) = \mathbb{E}_{z\sim \mathcal{B}} [h_{u,z}(x_u)]
 
     Parameters
     ----------
@@ -336,9 +346,14 @@ def get_components_brute_force(h, foreground, background, features, interactions
 
 def get_components_adaptive(h, background, features, tolerance=0.05, show_bar=False, precompute=None):
     """
-    Compute the Anchored/Interventional Decomposition of any black box by iteratively exploring
-    the lattice space of feature interactions. This function assumes that foreground=background
-    in ordre to exploit the duality between averaging a component row-wise and column-wise.
+    Compute the AnchoredDecomposition of any black box 
+
+    .. math::
+
+        h_{u,z}(x_u) = \sum_{v\subseteq u} (-1)^{|u|-|v|} h(x_v, z_{-v})
+
+    by iteratively exploring the lattice space of feature interactions. This function assumes 
+    that foreground=background in order to exploit the duality between averaging a component row-wise and column-wise.
 
     Parameters
     ----------
@@ -348,11 +363,10 @@ def get_components_adaptive(h, background, features, tolerance=0.05, show_bar=Fa
         The data points at which to anchor and evaluate the decomposition
     features : Features
         A Features object that represents which columns of X are treated as groups.
-    interactions : int, List(Tuple(int)), default=1
-        The highest level of interactions to consider. If it is a list of tuples, then we compute all
-        specified components in `interactions`.
     tolerance : float, default=0.05
         Stop exploring the lattice space when the explained variance exceeds `1-tolerance` of the total variance.
+    show_bar : bool, default=False
+        Flag to decide if progress bar is shown.
     precompute: dict{Tuple: np.ndarray}, default=None
         A precomputed decomposition containing all additive terms (i.e. `decomp[(i,)]`) can be provided
         to speed up the algorithm. The components must be (Nb, Nb).
@@ -442,8 +456,14 @@ def get_components_adaptive(h, background, features, tolerance=0.05, show_bar=Fa
 
 def get_components_tree(model, foreground, background, features, anchored=False, algorithm='recurse'):
     """
-    Compute the Anchored/Interventional Decomposition of a tree ensemble
+    Compute the additve terms of the Anchored/Interventional Decomposition of a tree ensemble 
     (e.g. Random Forest and Gradient Boosted Trees).
+
+    .. math::
+
+        h_{i,z}(x_i) = h(x_i, z_{-i}) - h(z)
+
+        h_{i,\mathcal{B}}(x_i) = \mathbb{E}_{z\sim \mathcal{B}} [h_{i,z}(x_i)]
 
     Parameters
     ----------
@@ -461,6 +481,7 @@ def get_components_tree(model, foreground, background, features, anchored=False,
         component is (Nf, Nb). If interventional, a component is (Nf,).
     algorithm : string, default='recurse'
         The algorithm used to compute the decompositions, the options are
+
         - `recurse` with complexity `Nf Nb 2^min(depth, n_features)` can compute anchored and interventional
         - `leaf` with complexity `(Nf+Nb) 2^min(depth, n_features)` can only compute interventional
 
@@ -619,7 +640,13 @@ def get_components_tree(model, foreground, background, features, anchored=False,
 
 def get_PDP_PFI_importance(decomposition, variance=False, bootstrap_error=False, return_keys=False):
     """
-    Compute PDP and PFI feature importance given an anchored decomposition
+    Compute PDP and PFI feature importance given an anchored decomposition.
+    
+    .. math::
+
+        \Phi^{PDP}_i(h) = \mathbb{E}_{x\sim \mathcal{F}} [ h_{i,\mathcal{B}}(x_i)^2]
+        
+        \Phi^{PFI}_i(h) = \mathbb{E}_{x\sim \mathcal{F}} [ (\sum_{u:i\in u} h_{u,\mathcal{B}}(x_u))^2]
 
     Parameters
     ----------
@@ -640,9 +667,9 @@ def get_PDP_PFI_importance(decomposition, variance=False, bootstrap_error=False,
     I_PFI : (n_features,) np.ndarray
         PFI feature importance.
     error_PDP : (2, n_features) np.ndarray, optional
-        -/+ bootstrap errors for PDP importance
+        -/+ bootstrap errors for PDP importance,
     error_PFI : (2, n_features) np.ndarray, optional
-        -/+ bootstrap errors for PFI importance
+        -/+ bootstrap errors for PFI importance,
     additive_keys : List(List(int)), optional
         The key associated with each feature importance.
     """
@@ -704,15 +731,14 @@ def get_PDP_PFI_importance(decomposition, variance=False, bootstrap_error=False,
 
 def get_H_interaction(decomposition, return_keys=False):
     """
-    Compute the H^2 statistics measuring interaction strenght between
-    feature `i` and the remaining ones
+    Compute the H^2 statistics measuring interaction strenght between feature `i` and the remaining ones.
 
     Parameters
     ----------
     decomposition : dict{Tuple: np.ndarray}
-        An anchored decomposition with foreground=background so that `decomposition[(0,)].shape = (N, N)`
+        An anchored decomposition with foreground=background so that `decomposition[(0,)].shape = (N, N)`.
     return_keys : bool, default=False
-        whether to return the additive keys associated with each interaction index
+        Flag to return the additive keys associated with each interaction index.
 
     Returns
     -------
@@ -740,7 +766,7 @@ def get_H_interaction(decomposition, return_keys=False):
 
 def get_h_add(decomposition, anchored=True, all_subsets=False):
     """
-    Compute additive decomposition `h_add(x) = sum_i h_i(x)` evaluated at each foreground point x
+    Compute additive decomposition `h_add(x) = sum_i h_i(x)` evaluated at each foreground point x.
 
     Parameters
     ----------
@@ -748,7 +774,7 @@ def get_h_add(decomposition, anchored=True, all_subsets=False):
         An anchored/interventional decomposition
     anchored : bool, default=True
         If True then the decomposition is anchored and if False the decomposition
-        is interventional
+        is interventional.
     all_subsets : bool, default=False
         If True, then returns the summation over all subsets sum_u h_u(x). This is
         useful when we estimate the lattice space and want to know the resulting error.
@@ -757,7 +783,7 @@ def get_h_add(decomposition, anchored=True, all_subsets=False):
     -------
     h_add : np.ndarray
         The additive decomposition summing the intercept and all main effects.
-        If anchored=True, is is a (Nf, Nb) array. Otherwise, a (Nf,) array is returned
+        If anchored=True, it is a (Nf, Nb) array. Otherwise, a (Nf,) array is returned.
     """
 
     keys = decomposition.keys()
@@ -780,7 +806,11 @@ def get_h_add(decomposition, anchored=True, all_subsets=False):
 
 def get_CoE(decomposition, foreground_preds=None, all_subsets=False):
     """
-    Compute Cost of Exclusion `CoE = Ex( (h(x) - h_add(x))^2 )`
+    Compute the Cost of Exclusion
+
+    .. math:: \mathbb{E}_{x\sim\mathcal{F}}[(h(x) - \sum_{u:|u|\leq 1} h_{u,\mathcal{B}}(x_u)))^2 ]
+
+    which is nothing more than the average squared error between the model and its additive decomposition.
 
     Parameters
     ----------
@@ -796,10 +826,11 @@ def get_CoE(decomposition, foreground_preds=None, all_subsets=False):
     all_subsets : bool, default=False
         If True, then returns the summation over all subsets sum_u h_u(x). This is
         useful when we estimate the lattice space and want to know the resulting error.
+
     Returns
     -------
     coe : float
-        The cost of exclusion which measures 'Lack of Additivity'
+        The Cost of Exclusion which measures interaction strength.
     """
 
     # Check the decomposition and foreground_preds
@@ -850,6 +881,7 @@ def get_interventional_from_anchored(decomposition):
     ----------
     decomposition : dict{Tuple: np.ndarray}
         An anchored decomposition `decomposition[(0,)].shape=(Nf, Nb)`.
+
     Returns
     -------
     decomposition_ : dict{Tuple: np.ndarray}
@@ -868,6 +900,25 @@ def get_interventional_from_anchored(decomposition):
 
 
 def get_regional_decompositions(decomposition, foreground_region_idx, background_region_idx, n_regions):
+    """
+    Transform an anchored decomposition into a list of regional anchored decompositions.
+
+    Parameters
+    ----------
+    decomposition : dict{Tuple: np.ndarray}
+        An anchored decomposition `decomposition[(0,)].shape=(Nf, Nb)`.
+    foreground_region_idx : np.ndarray
+        A `(Nf,)` array storing the region index of each foreground point.
+    background_region_idx : np.ndarray
+        A `(Nb,)` array storing the region index of each background point.
+    n_regions : int
+        The number of regions
+
+    Returns
+    -------
+    regional_decompositions : List( dict{Tuple: np.ndarray} )
+        A `(n_regions,)` list containing anchored decompositions restricted to the specific regions.
+    """
     assert len(decomposition[(0,)].shape) == 2, "The decomposition must be anchored"
     regional_decompositions = []
     for region in range(n_regions):

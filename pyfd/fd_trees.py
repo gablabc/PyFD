@@ -1,6 +1,5 @@
 from copy import deepcopy
 import numpy as np
-from sklearn.base import BaseEstimator
 from abc import ABC, abstractmethod
 from heapq import heappush, heappop
 
@@ -44,7 +43,7 @@ class Node(object):
 
 
 
-class FDTree(BaseEstimator, ABC):
+class FDTree(ABC):
     """ Train a binary tree to minimize : LoA + alpha |L| """
 
     def __init__(self, features,
@@ -57,6 +56,7 @@ class FDTree(BaseEstimator, ABC):
         Parameters
         ----------
         features : Feature object
+            Features along which to split the input space. Features cannot be grouped.
         max_depth : int, default=3
             Maximum depth of FDTrees
         min_samples_leaf : int, default=20
@@ -81,7 +81,7 @@ class FDTree(BaseEstimator, ABC):
     def print(self, verbose=False, return_string=False):
         """
         Print the FDTree
-        
+
         Parameters
         ----------
         verbose : bool, default=False
@@ -268,8 +268,9 @@ class FDTree(BaseEstimator, ABC):
         
         Parameters
         ----------
-        X_new : (N, d) np.ndarray
-            Array containing the data on which to predict.
+        X_new : (N, n_features) np.ndarray
+            The data to assign to each lead (region) of the FDTree. The ith column of `X_new` must be the 
+            ith feature in the Features object passed to the constructor.
 
         Returns
         -------
@@ -447,8 +448,9 @@ class CoE_Tree(FDTree):
 
         Parameters
         ----------
-        X : (N, d) np.ndarray
-            The background data on which to fit the tree.
+        X : (N, n_features) np.ndarray
+            The data on which to fit the tree. The ith column of `X` must be the ith feature
+            in the Features object passed to the constructor.
         decomposition : dict{Tuple: np.ndarray}
             The functional decomposition used to compute the CoE objective.
             It needs to be anchored with foreground=background i.e.
@@ -508,8 +510,9 @@ class PDP_PFI_Tree(FDTree):
 
         Parameters
         ----------
-        X : (N, d) np.ndarray
-            The background data on which to fit the tree.
+        X : (N, n_features) np.ndarray
+            The data on which to fit the tree. The ith column of `X` must be the ith feature
+            in the Features object passed to the constructor.
         decomposition : dict{Tuple: np.ndarray}
             The functional decomposition used to compute the CoE objective.
             It needs to be anchored with foreground=background i.e.
@@ -574,8 +577,9 @@ class PDP_SHAP_Tree(FDTree):
 
         Parameters
         ----------
-        X : (N, d) np.ndarray
-            The background data on which to fit the tree.
+        X : (N, n_features) np.ndarray
+            The data on which to fit the tree. The ith column of `X` must be the ith feature
+            in the Features object passed to the constructor.
         decomposition : dict{Tuple: np.ndarray}
             The functional decomposition used to compute the CoE objective.
             It needs to be anchored with foreground=background i.e.
@@ -645,8 +649,9 @@ class GADGET_PDP(FDTree):
 
         Parameters
         ----------
-        X : (N, d) np.ndarray
-            The background data on which to fit the tree.
+        X : (N, n_features) np.ndarray
+            The data on which to fit the tree. The ith column of `X` must be the ith feature
+            in the Features object passed to the constructor.
         decomposition : dict{Tuple: np.ndarray}
             The functional decomposition used to compute the CoE objective.
             It needs to be anchored with foreground=background i.e.
@@ -712,7 +717,16 @@ class GADGET_PDP(FDTree):
 class CART(FDTree):
     """
     Classic CART that minimizes the Squared error
-    `sum_leaf sum_{x^(i)\in leaf} ( h(x^(i)) - v_leaf ) ^ 2`
+
+    .. math::
+ 
+        \sum_{\ell \in L} \sum_{x^{(i)}\in \ell} ( h(x^{(i)}) - v_\ell ) ^ 2
+
+    This class has two purposes
+
+        - Find naive regions that do not take feature interactions into account. As such, it acts as a baseline.
+        - Predict feature x_i given the remaining features x_{-i}. This can be used to estimate conditional expectations.
+
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -724,8 +738,9 @@ class CART(FDTree):
 
         Parameters
         ----------
-        X : (N, d) np.ndarray
-            The background data on which to fit the tree.
+        X : (N, n_features) np.ndarray
+            The data on which to fit the tree. The ith column of `X` must be the ith feature
+            in the Features object passed to the constructor.
         target : (N,)
             Target to predict with regression trees.
         """

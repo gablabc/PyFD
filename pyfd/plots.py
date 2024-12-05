@@ -126,10 +126,11 @@ def bar(phis, feature_labels, threshold=None, xerr=None, absolute=False, ax=None
         If not `None`, add horizontal errorbars to the bars.
         When a list is provided, the error bars are shown for each stacked bar.
         The values are +/- sizes relative to the data:
+
         - shape(N,): symmetric +/- values for each bar
         - shape(2, N): Separate - and + values for each bar. First row
             is the lower errors, the second row is the upper errors.
-    
+ 
     absolute `bool`, default=False
         Rank with respect to the absolute value of the importance
     ax : `pyplot.axis`
@@ -355,9 +356,9 @@ def partial_dependence_plot(decomposition, foreground, features, idxs=None, plot
                 if plot_hist:
                     # TODO plot better histograms when categorical or integer
                     _, _, histogram = curr_ax.hist(foreground[r][:, column], bins=20, rwidth=0.9, color=color, 
-                                                                               alpha=0.6, bottom=y_min)
+                                                                               alpha=0.4, bottom=y_min)
                     max_height = max([h.get_height() for h in histogram])
-                    target_max_height = 0.5 * delta_y
+                    target_max_height = 0.2 * delta_y
                     for h in histogram:
                         h.set_height(target_max_height*h.get_height()/max_height)
             else:
