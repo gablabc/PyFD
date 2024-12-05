@@ -27,7 +27,9 @@ dynamic = ["version"]
 docs = [
   'sphinx',
   'nbsphinx',
-  'ipywidgets'
+  'ipywidgets',
+  'numpydoc',
+  'pydata-sphinx-theme'
 ]
 
 [tool.setuptools]
