@@ -17,7 +17,8 @@ This series of tutorials show how to fit and interpret additive models.
 
 - [2-1-Explain-Linear-Models](https://github.com/gablabc/PyFD/blob/master/tutorials/2-1-Explain-Linear-Models.ipynb) discusses how to explain the predictions of linear models, 
 which are the simplest form of additive models.
-- [2-2-Explain-Parametric-Additive--Models](https://github.com/gablabc/PyFD/blob/master/tutorials/2-2-Explain-Parametric-Additive-Models.ipynb) introduces parametric additive models and how to explain them.
+- [2-2-Explain-Parametric-Additive-Models](https://github.com/gablabc/PyFD/blob/master/tutorials/2-2-Explain-Parametric-Additive-Models.ipynb) introduces parametric additive models and how to explain them.
+- [2-3-Explain-NonParametric-Additive-Models](https://github.com/gablabc/PyFD/blob/master/tutorials/2-3-Explain-NonParametric-Additive-Models.ipynb) introduces non-parametric additive models and how to explain them.
 
 ## 3 Explaining General Models 
 Once we agree on how additive models should be explained, we can generalize said definitions to more general models by leveraging the theory of **Functional Decomposition**. 
