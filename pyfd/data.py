@@ -225,7 +225,7 @@ def get_data_bike():
 
 
 
-def get_data_adults(use_target_encoder=False):
+def get_data_adults(use_target_encoder=False, remove_gender=False):
     """ 
     Load the Adult-Income dataset for income predictions 
     
@@ -233,6 +233,8 @@ def get_data_adults(use_target_encoder=False):
     ----------
     use_target_encoder : bool, default=False
         Encode nominal features using the TargetEncoder
+    remove_gender : bool, default=False
+        Remove the gender attribute from X and return it as separate.
     
     Returns
     -------
@@ -242,6 +244,8 @@ def get_data_adults(use_target_encoder=False):
         The label
     features : pyfd.features.Features
         feature object
+    gender : (N,) np.ndarray
+        The gender as a separate array, only if `remove_gender=True` is passed.
     """
     # load train
     raw_data_1 = np.genfromtxt( cache_data( 'Adult-Income', 'adult.data'), delimiter=', ', dtype=str )
@@ -256,7 +260,6 @@ def get_data_adults(use_target_encoder=False):
     # Shuffle train/test
     df = pd.DataFrame(np.vstack((raw_data_1, raw_data_2)), columns=feature_names)
 
-
     # For more details on how the below transformations 
     df = df.astype({"age": np.int64, "educational-num": np.int64, 
                     "hours-per-week": np.int64, "capital-gain": np.int64, 
@@ -264,11 +267,12 @@ def get_data_adults(use_target_encoder=False):
 
     # Reduce number of categories
     df = df.replace({'workclass': {'Without-pay': 'Other/Unknown', 
-                                   'Never-worked': 'Other/Unknown'}})
-    df = df.replace({'workclass': {'?': 'Other/Unknown'}})
-    df = df.replace({'workclass': {'Federal-gov': 'Government', 
-                                   'State-gov': 'Government', 'Local-gov':'Government'}})
-    df = df.replace({'workclass': {'Self-emp-not-inc': 'Self-Employed', 
+                                   'Never-worked': 'Other/Unknown',
+                                   '?': 'Other/Unknown', 
+                                   'Federal-gov': 'Government', 
+                                   'State-gov': 'Government', 
+                                   'Local-gov':'Government',
+                                   'Self-emp-not-inc': 'Self-Employed', 
                                    'Self-emp-inc': 'Self-Employed'}})
 
     df = df.replace({'occupation': {'Adm-clerical': 'White-Collar', 
@@ -305,9 +309,14 @@ def get_data_adults(use_target_encoder=False):
              'hours-per-week', 'gender', 'workclass','education', 'marital-status', 
              'occupation', 'relationship', 'race', 'income']]
     df = shuffle(df, random_state=42)
-    feature_names = df.columns[:-1]
+
+    # Remove gender from df is requested
+    if remove_gender:
+        gender = list(df["gender"])
+        df = df.drop(columns="gender") 
 
     # Make a column transformer for ordinal encoder
+    feature_names = df.columns[:-1]
     if use_target_encoder:
         encoder = ColumnTransformer(transformers=
                       [('identity', FunctionTransformer(), df.columns[:5]),
@@ -329,7 +338,10 @@ def get_data_adults(use_target_encoder=False):
         [([cat_type] + list(l)) for l in encoder.transformers_[1][1].categories_]
     features = Features(X, feature_names, feature_types)
     
-    return X, y, features
+    if remove_gender:
+        return X, y, features, gender
+    else:
+        return X, y, features
 
 
 
