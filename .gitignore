@@ -1,4 +1,5 @@
 *.pdf
+*.png
 *.csv
 *.pyc
 *.joblib
@@ -8,6 +9,9 @@ pyfd.egg-info/
 *.so
 *.o
 build/*
+dist/*
+docs/_build/*
 tutorials/models/*
 tutorials/Images/*
+tutorials/.ipynb_checkpoints/*
 pyfd/cached_data
