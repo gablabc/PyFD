@@ -102,9 +102,9 @@ class TargetEncoder(BaseEstimator, TransformerMixin):
 
 
 def get_data_compas():
-    """ 
-    Load the COMPAS dataset for recidivism prediction 
-    
+    """
+    Load the COMPAS dataset for recidivism prediction
+
     Returns
     -------
     X : (N, d) np.ndarray
@@ -114,13 +114,13 @@ def get_data_compas():
     features : pyfd.features.Features
         feature object
     """
-    
+
     df = pd.read_csv( cache_data("COMPAS", "compas-scores-two-years.csv") )
     # Same preprocessing as done by ProPublica but we also only keep Caucasians and Blacks
     keep = (df["days_b_screening_arrest"] <= 30) &\
         (df["days_b_screening_arrest"] >= -30) &\
         (df["score_text"] != "nan") &\
-        ((df["race"] == "Caucasian") | (df["race"] == "African-American")) 
+        ((df["race"] == "Caucasian") | (df["race"] == "African-American"))
     df = df[keep]
 
     # Binarize some features
@@ -134,8 +134,8 @@ def get_data_compas():
     X = df[features]
 
     # Rename some columns
-    X = X.rename({"sex_Male" : "Sex", "race_Black" : "Race", "c_charge_degree_F" : "Charge", 
-              "priors_count" : "Priors", "age" : "Age", "juv_fel_count" : "Juv_felonies", 
+    X = X.rename({"sex_Male" : "Sex", "race_Black" : "Race", "c_charge_degree_F" : "Charge",
+              "priors_count" : "Priors", "age" : "Age", "juv_fel_count" : "Juv_felonies",
               "juv_misd_count" : "Juv_misds"})
     X = X.to_numpy().astype(np.float64)
     # New Features to keep
@@ -143,7 +143,7 @@ def get_data_compas():
 
     # Target
     # y = df["decile_score"].to_numpy().astype(np.float64)
-    y = df["two_year_recid"].astype(int)
+    y = df["two_year_recid"].to_numpy().astype(np.int64)
 
     # Generate Features object
     feature_types = [
@@ -787,41 +787,32 @@ def get_data_mushroom():
     df = pd.read_csv( cache_data('mushroom', 'data.csv'), delimiter="," )
 
     # Use the full category names
-    df = df.replace({'cap-shape': {'bell':'b','conical':'c','convex':'x','flat':'f', 'knobbed':'k','sunken':'s'}})
-    df = df.replace({'cap-surface': {'fibrous':'f','grooves':'g','scaly':'y','smooth':'s'}})
-    df = df.replace({'cap-color': {'brown':'n','buff':'b','cinnamon':'c','gray':'g','green':'r',
-                                    'pink':'p','purple':'u','red':'e','white':'w','yellow':'y'}})
-    df = df.replace({'bruises?': {'bruises':'t','no':'f'}})
-    df = df.replace({'odor': {'almond':'a','anise':'l','creosote':'c','fishy':'y','foul':'f',
-                              'musty':'m','none':'n','pungent':'p','spicy':'s'}})
-    df = df.replace({'gill-attachment': {'attached':'a','descending':'d','free':'f','notched':'n'}})
-    df = df.replace({'gill-spacing': {'close':'c','crowded':'w','distant':'d'}})
-    df = df.replace({'gill-size': {'broad':'b','narrow':'n'}})
-    df = df.replace({'gill-color': {'black':'k','brown':'n','buff':'b','chocolate':'h','gray':'g', 'green':'r',
-                                    'orange':'o','pink':'p','purple':'u','red':'e', 'white':'w','yellow':'y'}})
-    df = df.replace({'stalk-shape': {'enlarging':'e','tapering':'t'}})
-    df = df.replace({'stalk-root': {'bulbous':'b','club':'c','cup':'u','equal':'e', 'rhizomorphs':'z','rooted':'r',
-                                    'missing':'?'}})
-    df = df.replace({'stalk-surface-above-ring': {'fibrous':'f','scaly':'y','silky':'k','smooth':'s'}})
-    df = df.replace({'stalk-surface-below-ring': {'fibrous':'f','scaly':'y','silky':'k','smooth':'s'}})
-    df = df.replace({'stalk-color-above-ring': {'brown':'n','buff':'b','cinnamon':'c','gray':'g','orange':'o',
-                                                'pink':'p','red':'e','white':'w','yellow':'y'}})
-    df = df.replace({'stalk-color-below-ring': {'brown':'n','buff':'b','cinnamon':'c','gray':'g','orange':'o',
-                                                'pink':'p','red':'e','white':'w','yellow':'y'}})
-    df = df.replace({'veil-type': {'partial':'p','universal':'u'}})
-    df = df.replace({'veil-color': {'brown':'n','orange':'o','white':'w','yellow':'y'}})
-    df = df.replace({'ring-number': {'none':'n','one':'o','two':'t'}})
-    df = df.replace({'ring-type': {'cobwebby':'c','evanescent':'e','flaring':'f','large':'l', 'none':'n',
-                                   'pendant':'p','sheathing':'s','zone':'z'}})
-    df = df.replace({'spore-print-color': {'black':'k','brown':'n','buff':'b','chocolate':'h','green':'r',
-                                           'orange':'o','purple':'u','white':'w','yellow':'y'}})
-    df = df.replace({'population': {'abundant':'a','clustered':'c','numerous':'n', 'scattered':'s',
-                                     'several':'v','solitary':'y'}})
-    df = df.replace({'habitat': {'grasses':'g','leaves':'l','meadows':'m','paths':'p', 'urban':'u',
-                                  'waste':'w','woods':'dd'}})
+    df = df.replace({'cap-shape': {'b':'bell','c':'conical','x':'convex','f':'flat','k': 'knobbed','s':'sunken'}})
+    df = df.replace({'cap-surface': {'f':'fibrous','g':'grooves','y':'scaly','s':'smooth'}})
+    df = df.replace({'cap-color': {'n':'brown','b':'buff','c':'cinnamon','g':'gray','r':'green','p':'pink',
+                                   'u':'purple','e':'red','w':'white','y':'yellow'}})
+    df = df.replace({'bruises': {'t':'bruises','f':'no'}})
+    df = df.replace({'odor': {'a':'almond','l':'anise','c':'creosote','y':'fishy','f':'foul','m': 'musty','n':'none','p':'pungent','s':'spicy'}})
+    df = df.replace({'gill-attachment': {'a':'attached','d':'descending','f':'free','n':'notched'}})
+    df = df.replace({'gill-spacing': {'c':'close','w':'crowded','d':'distant'}})
+    df = df.replace({'gill-size': {'b':'broad','n':'narrow'}})
+    df = df.replace({'gill-color': {'k':'black','n':'brown','b':'buff','h':'chocolate','g':'gray','r': 'green','o': 'orange','p':'pink','u':'purple','e':'red','w': 'white','y':'yellow'}})
+    df = df.replace({'stalk-shape': {'e':'enlarging','t':'tapering'}})
+    df = df.replace({'stalk-root': {'b':'bulbous','c':'club','u':'cup','e':'equal','z': 'rhizomorphs','r':'rooted','?': 'missing'}})
+    df = df.replace({'stalk-surface-above-ring': {'f':'fibrous','y':'scaly','k':'silky','s':'smooth'}})
+    df = df.replace({'stalk-surface-below-ring': {'f':'fibrous','y':'scaly','k':'silky','s':'smooth'}})
+    df = df.replace({'stalk-color-above-ring': {'n':'brown','b':'buff','c':'cinnamon','g':'gray','o':'orange','p': 'pink','e':'red','w':'white','y':'yellow'}})
+    df = df.replace({'stalk-color-below-ring': {'n':'brown','b':'buff','c':'cinnamon','g':'gray','o':'orange','p': 'pink','e':'red','w':'white','y':'yellow'}})
+    df = df.replace({'veil-type': {'p':'partial','u':'universal'}})
+    df = df.replace({'veil-color': {'n':'brown','o':'orange','w':'white','y':'yellow'}})
+    df = df.replace({'ring-number': {'n':'none','o':'one','t':'two'}})
+    df = df.replace({'ring-type': {'c':'cobwebby','e':'evanescent','f':'flaring','l':'large','n': 'none','p': 'pendant','s':'sheathing','z':'zone'}})
+    df = df.replace({'spore-print-color': {'k':'black','n':'brown','b':'buff','h':'chocolate','r':'green','o': 'orange','u':'purple','w':'white','y':'yellow'}})
+    df = df.replace({'population': {'abundant':'a','clustered':'c','numerous':'n', 'scattered':'s', 'several':'v','solitary':'y'}})
+    df = df.replace({'habitat': {'g':'grasses','l':'leaves','m':'meadows','p':'paths','u': 'urban','w': 'waste','dd':'woods'}})
     encoder = OrdinalEncoder()
     X = encoder.fit_transform(df.iloc[:, 1:])
-    y = df["poisonous"].to_numpy()
+    y = (df["poisonous"]=="p").to_numpy().astype(np.int64)
 
     # Generate Features object
     feature_names = df.columns[1:]
@@ -839,6 +830,7 @@ DATASET_MAPPING = {
     "kin8nm": get_data_kin8nm,
     "default_credit": get_data_credit,
     "kaggle_houses" : get_data_kaggle_housing,
+    "mushroom": get_data_mushroom
 }
 
 
@@ -848,5 +840,6 @@ if __name__ == "__main__":
         X, y, features = import_fun()
         print(X.shape)
         print(y.shape)
+        print(y[:10])
         features.summary()
         print("\n\n")
