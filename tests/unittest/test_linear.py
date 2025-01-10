@@ -2,7 +2,7 @@
 
 import pytest
 import numpy as np
-from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
+from sklearn.linear_model import Ridge, Lasso, ElasticNet
 from sklearn.linear_model import SGDRegressor, SGDClassifier, LogisticRegression
 from sklearn.svm import LinearSVC
 from sklearn.pipeline import Pipeline
@@ -13,6 +13,7 @@ from scipy.stats import chi2
 
 from pyfd.decompositions import get_components_linear, get_components_brute_force
 from pyfd.features import Features
+from pyfd.data import get_data_mushroom
 
 
 def setup_toy_task(d_num, d_cat=0, n_samples=500, task="regression"):
@@ -33,7 +34,7 @@ def setup_toy_task(d_num, d_cat=0, n_samples=500, task="regression"):
     else:
         threshold = np.sqrt(chi2(df=d).ppf(0.5))
         y = (np.linalg.norm(X_num, axis=1) > threshold).astype(int)
-        
+
     return X, y.ravel(), features
 
 
@@ -51,20 +52,20 @@ def test_toy_linear(task, num_encoding, drop_ohe_cat):
     d = d_num + d_cat
     X, y, features = setup_toy_task(d_num, d_cat, 300, task)
     # Encoding numerical features
-    if num_encoding == "identity": 
+    if num_encoding == "identity":
         numerical_encoder = FunctionTransformer()
-    elif num_encoding == "bins": 
+    elif num_encoding == "bins":
         if drop_ohe_cat:
             numerical_encoder = Pipeline([('discretizer', KBinsDiscretizer(encode='ordinal')),
                                           ('ohe', OneHotEncoder(drop='first'))])
         else:
             numerical_encoder = KBinsDiscretizer(encode='onehot-dense')
-    elif num_encoding == "splines-bias": 
+    elif num_encoding == "splines-bias":
         numerical_encoder = SplineTransformer(n_knots=4, knots='quantile', include_bias=True)
-    elif num_encoding == "splines-nbias": 
+    elif num_encoding == "splines-nbias":
         numerical_encoder = SplineTransformer(n_knots=4, knots='quantile', include_bias=False)
     # Encoding categorical features
-    ohe_encoder = OneHotEncoder(sparse_output=False, drop='first') if drop_ohe_cat else\
+    ohe_encoder = OneHotEncoder(sparse_output=False, drop='first') if drop_ohe_cat else \
                   OneHotEncoder(sparse_output=False)
     encoder = ColumnTransformer([
                 ('num', numerical_encoder, list(range(d_num))), ('cat', ohe_encoder, list(range(d_num, d)) )
@@ -94,7 +95,26 @@ def test_toy_linear(task, num_encoding, drop_ohe_cat):
             assert np.isclose(components[(i,)], components_2[(i,)].mean(1)).all(), f"Fail for {type(lin_model)}"
 
 
+####### Linear Model on sparse OHE data ########
+@pytest.mark.parametrize("drop_ohe_cat", [None, "first"])
+def test_sparse_linear(drop_ohe_cat):
+
+    X, y, features = get_data_mushroom()
+    model = Pipeline([('encoder', OneHotEncoder(drop="first")), ('predictor', LogisticRegression())])
+    model.fit(X, y)
+
+    # Explain the model
+    foreground = X[:1000]
+    background = X
+    components = get_components_linear(model, foreground, background, features)
+
+    # Sanity check
+    h = model.decision_function
+    components_2 = get_components_brute_force(h, foreground, background, features)
+    for i in range(len(features)):
+        assert np.isclose(components[(i,)], components_2[(i,)].mean(1)).all(), "Fail for sparse"
+
 
 if __name__ == "__main__":
-    test_toy_linear("regression", "identity", False)
-
+    #ftest_toy_linear("regression", "identity", False)
+    test_sparse_linear("first")

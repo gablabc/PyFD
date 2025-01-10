@@ -6,6 +6,7 @@ import numpy as np
 from tqdm import tqdm
 import os
 from copy import deepcopy
+from scipy.sparse import csr_matrix
 
 from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
 from sklearn.linear_model import SGDRegressor, SGDClassifier, LogisticRegression
@@ -64,8 +65,15 @@ def get_components_linear(h, foreground, background, features):
     w = predictor.coef_.ravel()
     for j in range(len(Imap_inv)):
         Imap_inv_j = np.array(Imap_inv[j])
-        # TODO this breaks if the processed data is sparse
-        decomposition[(j,)] = np.sum((foreground[:, Imap_inv_j] - background[:, Imap_inv_j].mean(0)) * w[Imap_inv_j], axis=1)
+        # The data is sparse
+        if isinstance(foreground, csr_matrix):
+            Delta = foreground[:, Imap_inv_j].toarray()
+            Delta -= background[:, Imap_inv_j].toarray().mean(0)
+        # The data is dense
+        else:
+            Delta = foreground[:, Imap_inv_j]
+            Delta -= background[:, Imap_inv_j].mean(0)
+        decomposition[(j,)] = np.sum(Delta * w[Imap_inv_j], axis=1)
 
     return decomposition
 
@@ -120,7 +128,7 @@ def get_components_ebm(h, foreground, background, features, anchored=True):
         # Find out to which subsets of features this term contributes to
         term = h.term_features_[term_idx]
         key = key_from_term(term, Imap_inv)
-        if not key in decomposition.keys():
+        if key not in decomposition.keys():
             decomposition[key] = np.zeros(component_shape)
 
         # () term h(z)
