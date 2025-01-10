@@ -785,6 +785,8 @@ def get_data_mushroom():
     """
 
     df = pd.read_csv( cache_data('mushroom', 'data.csv'), delimiter="," )
+    # This feature does not vary
+    df.drop(columns="veil-type", inplace=True)
 
     # Use the full category names
     df = df.replace({'cap-shape': {'b':'bell','c':'conical','x':'convex','f':'flat','k': 'knobbed','s':'sunken'}})
@@ -801,15 +803,14 @@ def get_data_mushroom():
     df = df.replace({'stalk-root': {'b':'bulbous','c':'club','u':'cup','e':'equal','z': 'rhizomorphs','r':'rooted','?': 'missing'}})
     df = df.replace({'stalk-surface-above-ring': {'f':'fibrous','y':'scaly','k':'silky','s':'smooth'}})
     df = df.replace({'stalk-surface-below-ring': {'f':'fibrous','y':'scaly','k':'silky','s':'smooth'}})
-    df = df.replace({'stalk-color-above-ring': {'n':'brown','b':'buff','c':'cinnamon','g':'gray','o':'orange','p': 'pink','e':'red','w':'white','y':'yellow'}})
-    df = df.replace({'stalk-color-below-ring': {'n':'brown','b':'buff','c':'cinnamon','g':'gray','o':'orange','p': 'pink','e':'red','w':'white','y':'yellow'}})
-    df = df.replace({'veil-type': {'p':'partial','u':'universal'}})
+    df = df.replace({'stalk-color-above-ring': {'n':'brown','b':'buff','c':'cinnamon','g':'gray','o':'orange','p':'pink','e':'red','w':'white','y':'yellow'}})
+    df = df.replace({'stalk-color-below-ring': {'n':'brown','b':'buff','c':'cinnamon','g':'gray','o':'orange','p':'pink','e':'red','w':'white','y':'yellow'}})
     df = df.replace({'veil-color': {'n':'brown','o':'orange','w':'white','y':'yellow'}})
     df = df.replace({'ring-number': {'n':'none','o':'one','t':'two'}})
-    df = df.replace({'ring-type': {'c':'cobwebby','e':'evanescent','f':'flaring','l':'large','n': 'none','p': 'pendant','s':'sheathing','z':'zone'}})
-    df = df.replace({'spore-print-color': {'k':'black','n':'brown','b':'buff','h':'chocolate','r':'green','o': 'orange','u':'purple','w':'white','y':'yellow'}})
-    df = df.replace({'population': {'abundant':'a','clustered':'c','numerous':'n', 'scattered':'s', 'several':'v','solitary':'y'}})
-    df = df.replace({'habitat': {'g':'grasses','l':'leaves','m':'meadows','p':'paths','u': 'urban','w': 'waste','dd':'woods'}})
+    df = df.replace({'ring-type': {'c':'cobwebby','e':'evanescent','f':'flaring','l':'large','n':'none','p':'pendant','s':'sheathing','z':'zone'}})
+    df = df.replace({'spore-print-color': {'k':'black','n':'brown','b':'buff','h':'chocolate','r':'green','o':'orange','u':'purple','w':'white','y':'yellow'}})
+    df = df.replace({'population': {'a':'abundant','c':'clustered','n':'numerous','s':'scattered','v':'several','y':'solitary'}})
+    df = df.replace({'habitat':{'g':'grasses','l':'leaves','m':'meadows','p':'paths','u':'urban','w':'waste','d':'woods'}})
     encoder = OrdinalEncoder()
     X = encoder.fit_transform(df.iloc[:, 1:])
     y = (df["poisonous"]=="p").to_numpy().astype(np.int64)
