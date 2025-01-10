@@ -246,16 +246,41 @@ def get_curr_axis(n_rows, n_cols, ax, iter):
     return curr_ax
 
 
+def set_ticks_categorical_features(curr_ax, feature, cat_name_threshold, degree=45):
+    rotation = 0
+    if feature.type in ["ordinal", "nominal"]:
+        categories = feature.cats
+        categories = [name[:cat_name_threshold] for name in categories]
+        # Rotate when there are more than 5 categories
+        if len(categories) > 5:
+            rotation = degree
+    else:
+        categories = [False, True]
+    curr_ax.set_xticks(np.arange(len(categories)), labels=categories, rotation=rotation)
 
-def partial_dependence_plot(decomposition, foreground, features, idxs=None, plot_hist=True, normalize_y=True, 
-                                                            centered=False, n_curves=200, figsize=None, n_cols=5):
-    """ 
+
+def plot_histogram(curr_ax, x_i, feature, delta_y, **kwargs):
+    if feature.type in ["ordinal", "nominal"]:
+        x_i = np.bincount(x_i.astype(np.int64), minlength=len(feature.cats)).astype(np.float64)
+        x_i *= 0.2 * delta_y / x_i.max()
+        curr_ax.bar( np.arange(len(feature.cats)), x_i, 0.5, align='center', **kwargs )
+    else:
+        _, _, histogram = curr_ax.hist(x_i, bins=20, rwidth=0.9, **kwargs)
+        max_height = max([h.get_height() for h in histogram])
+        target_max_height = 0.2 * delta_y
+        for h in histogram:
+            h.set_height(target_max_height*h.get_height()/max_height)
+
+
+def partial_dependence_plot(decomposition, foreground, features, idxs=None, plot_hist=True, normalize_y=True,
+                                            centered=False, n_curves=200, cat_name_threshold=10, figsize=None, n_cols=5):
+    """
     Plot the partial dependence plot as a function of x_i.
 
     Parameters
     ----------
     decomposition : dict{Tuple: np.ndarray}
-        The components of the decomposition indexed via their feature subset e.g. 
+        The components of the decomposition indexed via their feature subset e.g.
         `decomposition[(0,)]` is an array of shape (Nf, Nb) or (Nf,). Can be a
         List(dict) of length `n_regions`.
     foreground : (Nf, d) np.ndarray
@@ -263,18 +288,18 @@ def partial_dependence_plot(decomposition, foreground, features, idxs=None, plot
     features : Features
         The features object.
     idxs : List(int) or int, default=None
-        The index of the features to plot. When 
+        The index of the features to plot. When
         - `None`, all non-group features are plotted.
         - `List(int)`, the non-group features with indices in List are plotted.
         - `int`, the top-idxs non-group features are plotted.
-    
+
     plot_hist : bool, default=True
         Plot the histogram of foreground data. Only available if an interventional
         decomposition is provided. Otherwise, there are risks of information overload.
     normalize_y : bool, default=True
         Have the same y axis for all plots.
     centered : bool, default=False
-        Center the ICE curves so they integrate to 0 along x_i (useful to compare their 
+        Center the ICE curves so they integrate to 0 along x_i (useful to compare their
         shape rather than their value).
     figsize : List(int), default=None
         The size (Nx, Ny) of the figure.
@@ -296,7 +321,7 @@ def partial_dependence_plot(decomposition, foreground, features, idxs=None, plot
             del Imap_inv[i]
         else:
             Imap_inv[i] = Imap_inv[i][0]
-    
+
     # Lists are passed for regional plots
     if type(decomposition) == list:
         assert type(foreground) == list, "Provide lists of foregrounds and backgrounds"
@@ -354,13 +379,7 @@ def partial_dependence_plot(decomposition, foreground, features, idxs=None, plot
                 if n_regions > 1:
                     curr_ax.plot(foreground[r][sorted_idx, column], decomposition[r][key][sorted_idx], color, linewidth=2)
                 if plot_hist:
-                    # TODO plot better histograms when categorical or integer
-                    _, _, histogram = curr_ax.hist(foreground[r][:, column], bins=20, rwidth=0.9, color=color, 
-                                                                               alpha=0.4, bottom=y_min)
-                    max_height = max([h.get_height() for h in histogram])
-                    target_max_height = 0.2 * delta_y
-                    for h in histogram:
-                        h.set_height(target_max_height*h.get_height()/max_height)
+                    plot_histogram(curr_ax, foreground[r][:, column], feature, delta_y, color=color, bottom=y_min, alpha=0.4)
             else:
                 # For each group plot the anchored components in color
                 n_curves_max = n_curves // n_regions
@@ -377,19 +396,10 @@ def partial_dependence_plot(decomposition, foreground, features, idxs=None, plot
                 curr_ax.plot(x, H.mean(1), 'k', linewidth=3)
                 if n_regions > 1:
                     curr_ax.plot(x, H.mean(1), color, linewidth=2)
-    
+
         # xticks labels for categorical data
         if feature.type in ["bool", "ordinal", "nominal"]:
-            if feature.type in ["ordinal", "nominal"]:
-                categories = feature.cats
-                # Truncate names if too long
-                # if len(categories) > 5:
-                # categories = [name[:3] for name in categories]
-                rotation = 45
-            else:
-                categories = [False, True]
-                rotation = 0
-            curr_ax.set_xticks(np.arange(len(categories)), labels=categories, rotation=rotation)
+            set_ticks_categorical_features(curr_ax, feature, cat_name_threshold, 90 if n_rows == 1 else 45)
 
         # Set ticks and labels
         curr_ax.grid('on')
@@ -410,7 +420,7 @@ def partial_dependence_plot(decomposition, foreground, features, idxs=None, plot
 #def partial_dependence_plot(decomposition, foreground, background, features, idxs=None,
 #                            groups_method=None, rules=None, fd_trees_kwargs={}, centered=True,
 #                            figsize=None, n_cols=5, plot_hist=False, normalize_y=True, alpha=0.01):
-#    
+#
 #    # If no idxs is provided, we plot all features
 #    if idxs is None:
 #        idxs = range(len(features))
