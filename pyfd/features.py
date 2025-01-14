@@ -1,4 +1,4 @@
-""" 
+"""
 Feature objects to represent feature of various types as well as operations on features such as selection and grouping
 """
 
@@ -9,7 +9,7 @@ from pyfd.utils import ravel
 # A feature is an object that has a `name` attribute, a `type` attribute, and a callable
 # that takes x and return a string representation of the feature. These are a high level representation
 # e.g. numerical -> (low, medium, high), categorical 3 -> "Married" etc.
-# These representation are primarily used when visualizing local attributions, where the 
+# These representation are primarily used when visualizing local attributions, where the
 # exact feature values may lack interpretability.
 
 
@@ -120,7 +120,7 @@ class integer_feature(object):
         else:
             str_value = str(round(x))
         return self.name + "=" + str_value
-    
+
 
 # Feature that takes [0, 1] values which represent percentage e.g. 0.5->50%
 class percent_feature(object):
@@ -185,7 +185,7 @@ class Features(object):
             - `'num_int'` for integer features
             - `('nominal', 'cat0', 'cat1')` or `('ordinal', 'cat0', 'cat1')` for categorical features
         """
-        
+
         self.d = X.shape[1]
         assert self.d == len(names), "feature names must be of length d"
         assert self.d == len(types), "feature types must be of length d"
@@ -202,16 +202,16 @@ class Features(object):
                 self.feature_objs.append(cat_feature(names[i], feature_type[0], feature_type[1:]))
                 if feature_type[0] == "nominal":
                     self.nominal.append(i)
-            else:   
+            else:
                 if feature_type == "num":
                     self.feature_objs.append(numerical_feature(names[i], X[:, i]))
-                    
+
                 elif feature_type == "sparse_num":
                     self.feature_objs.append(sparse_numerical_feature(names[i], X[:, i]))
-                    
+
                 elif feature_type == "bool":
                     self.feature_objs.append(bool_feature(names[i]))
-                    
+
                 elif feature_type == "num_int":
                     self.feature_objs.append(integer_feature(names[i], X[:, i]))
 
@@ -220,10 +220,10 @@ class Features(object):
 
                 else:
                     raise ValueError("Wrong feature type")
-                    
+
         # ordinal features are naturally represented with numbers
         self.ordinal = list( set(range(len(types))) - set(self.nominal) )
-    
+
     def print_value(self, x):
         """ Map values of x into interpretable text. """
         print_res = []
@@ -236,7 +236,7 @@ class Features(object):
                 x_i = x[self.Imap_inv[i]]
             print_res.append( self.feature_objs[i](x_i) )
         return print_res
-    
+
     def names(self):
         """ Return a List of str representing the name of each feature. """
         return [obj.name for obj in self.feature_objs]
@@ -244,7 +244,7 @@ class Features(object):
     def types(self):
         """ Return a List of str representing the type of each feature. """
         return [obj.type for obj in self.feature_objs]
-    
+
     def summary(self):
         """ A description of each feature name, type, cardinality, and which column(s) of X it refers to. """
         free_space = [3, 20, 20, 12, 18]
@@ -268,16 +268,16 @@ class Features(object):
 
     def __len__(self):
         return len(self.Imap_inv)
-    
+
     def select(self, feature_idxs):
-        """ 
+        """
         Select the listed features.
 
         Parameters
         ----------
         feature_idxs : List(int)
             A List containing the index of the features to select.
-        
+
         Returns
         -------
         feature_copy : Features
@@ -295,29 +295,39 @@ class Features(object):
         for idx in feature_idxs:
             feature_copy.Imap_inv.append( self.Imap_inv[idx] )
             feature_copy.feature_objs.append( self.feature_objs[idx] )
-        
+
         return feature_copy
-    
+
 
     def remove(self, feature_idxs):
-        """ 
+        """
         Remove the listed features.
 
         Parameters
         ----------
         feature_idxs : List(int)
             A List containing the index of the features to remove.
-        
+
         Returns
         -------
         feature_copy : Features
             A new Features object.
         """
-        return self.select( [i for i in range(len(self.Imap_inv)) if not i in feature_idxs] )
+        return self.select( [i for i in range(len(self.Imap_inv)) if i not in feature_idxs] )
+
+
+    def reset_Imap_inv(self):
+        """
+        When using .remove to remove features, the Imap_inv refers to columns of X. However,
+        when doing feature selection, we want the Imap_inv to refer to columns of the trimmed matrix
+        X_trimmed. Thus we must reset the Imap_inv to [[0], [1], ... ]
+        """
+        self.Imap_inv = [[i] for i in range(len(self.Imap_inv))]
+        return self
 
 
     def group(self, feature_groups):
-        """ 
+        """
         Put the select feature into groups.
 
         Parameters
@@ -325,7 +335,7 @@ class Features(object):
         feature_groups : List(List(int))
             A List containing the groups to form. For example,  `[[0, 1, 2], [3, 4, 5]]`
             will group the features 0, 1, 2 together and 3, 4, 5 together.
-        
+
         Returns
         -------
         feature_copy : Features
@@ -333,7 +343,7 @@ class Features(object):
         """
         assert type(feature_groups) in (tuple, list)
         assert type(feature_groups[0]) in (tuple, list)
-        
+
         # All features idxs that are involved in grouping
         all_grouped_idxs = ravel(feature_groups)
         new_feature_objs = []
@@ -341,7 +351,7 @@ class Features(object):
 
         # First, iterate over all non-grouped features
         for i in range(len(self.Imap_inv)):
-            if not i in all_grouped_idxs:
+            if i not in all_grouped_idxs:
                 new_feature_objs.append( self.feature_objs[i] )
                 new_Imap_inv.append( self.Imap_inv[i] )
 
