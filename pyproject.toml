@@ -12,14 +12,14 @@ readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
   'graphviz',
-  'numpy',
+  'numpy>=2.0.0,<2.4',
   'matplotlib',
   'scikit-learn>=1.0',
   'pandas',
   'tqdm>=4.27.0',
   'shap',
   'xgboost',
-  'interpret-core'
+  'interpret-core<0.7.6'
 ]
 dynamic = ["version"]
 
