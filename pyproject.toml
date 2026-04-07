@@ -9,7 +9,7 @@ authors = [
 ]
 description = "Functional Decompositions of Black-Boxes"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
   'graphviz',
   'numpy>=2.0.0,<2.4',
